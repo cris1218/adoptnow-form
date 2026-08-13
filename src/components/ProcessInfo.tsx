@@ -6,7 +6,7 @@ export function ProcessInfo() {
           Como funciona a adoção
         </h1>
         <p className="mt-2 text-base leading-relaxed text-stone-600">
-          Leia com atenção e, se concordar, responda o questionário no final.
+          Leia com atenção e, se concordar, siga para o questionário.
         </p>
       </div>
 

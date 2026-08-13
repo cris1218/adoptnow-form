@@ -1,6 +1,5 @@
-import { AdoptionLeadForm } from "@/components/AdoptionLeadForm";
+import { AdoptionFlow } from "@/components/AdoptionFlow";
 import { PawMark } from "@/components/PawMark";
-import { ProcessInfo } from "@/components/ProcessInfo";
 
 export default function Home() {
   return (
@@ -29,13 +28,7 @@ export default function Home() {
       </header>
 
       <main className="relative z-10 mx-auto flex w-full max-w-lg flex-1 flex-col gap-4 px-5 py-6 compact:px-2.5">
-        <section className="rounded-[1.75rem] border border-white/70 bg-white/90 p-6 shadow-[0_18px_50px_rgba(14,90,88,0.12)] backdrop-blur-sm compact:px-3">
-          <ProcessInfo />
-        </section>
-
-        <section className="rounded-[1.75rem] border border-white/70 bg-white/90 p-6 shadow-[0_18px_50px_rgba(14,90,88,0.12)] backdrop-blur-sm compact:px-3">
-          <AdoptionLeadForm />
-        </section>
+        <AdoptionFlow />
       </main>
 
       <footer className="relative z-10 px-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] text-center compact:px-2.5">
