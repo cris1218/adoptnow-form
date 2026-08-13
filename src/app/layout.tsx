@@ -19,6 +19,10 @@ export const metadata: Metadata = {
   title: siteTitle,
   description: siteDescription,
   applicationName: "Recanto do Ron Ron",
+  robots: {
+    index: true,
+    follow: true,
+  },
   icons: {
     icon: [{ url: "/icon.png", type: "image/png" }],
     apple: [{ url: "/apple-icon.png", type: "image/png" }],
@@ -30,20 +34,11 @@ export const metadata: Metadata = {
     siteName: "Recanto do Ron Ron",
     title: siteTitle,
     description: siteDescription,
-    images: [
-      {
-        url: "/og.png",
-        width: 1200,
-        height: 630,
-        alt: "Recanto do Ron Ron",
-      },
-    ],
   },
   twitter: {
     card: "summary_large_image",
     title: siteTitle,
     description: siteDescription,
-    images: ["/og.png"],
   },
   formatDetection: {
     telephone: false,
