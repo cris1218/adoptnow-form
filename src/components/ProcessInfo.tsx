@@ -27,7 +27,7 @@ export function ProcessInfo() {
       <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-base leading-relaxed text-amber-950 compact:px-2">
         <p className="font-bold">
           Nossos gatinhos saem do abrigo castrados, vermifugados, com antipulgas
-          e teste de FIV e FeLV.
+          e teste de FIV e FELV.
         </p>
         <p className="mt-1 text-sm font-medium leading-relaxed">
           Se houver suspeita de esporotricose, o gatinho fica em quarentena e só
