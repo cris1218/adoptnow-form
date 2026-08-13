@@ -15,7 +15,7 @@ export function ChoiceGroup<T extends string>({
   name: string;
   value: T | "";
   onChange: (value: T) => void;
-  options: Option<T>[];
+  options: readonly Option<T>[];
   columns?: 2 | 3;
 }) {
   return (
