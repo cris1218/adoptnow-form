@@ -3,6 +3,11 @@ import { Nunito } from "next/font/google";
 
 import "./globals.css";
 
+const siteUrl = "https://recantoronron.vercel.app";
+const siteTitle = "Quero adotar | Recanto do Ron Ron";
+const siteDescription =
+  "Questionário de adoção responsável do Recanto do Ron Ron. Leia as regras, deixe seu nome e WhatsApp e a equipe entra em contato.";
+
 const nunito = Nunito({
   variable: "--font-nunito",
   subsets: ["latin"],
@@ -10,13 +15,35 @@ const nunito = Nunito({
 });
 
 export const metadata: Metadata = {
-  title: "Quero adotar | Recanto do Ron Ron",
-  description:
-    "Questionário de adoção responsável do Recanto do Ron Ron. Leia as regras e deixe seu contato.",
+  metadataBase: new URL(siteUrl),
+  title: siteTitle,
+  description: siteDescription,
   applicationName: "Recanto do Ron Ron",
   icons: {
     icon: [{ url: "/icon.png", type: "image/png" }],
     apple: [{ url: "/apple-icon.png", type: "image/png" }],
+  },
+  openGraph: {
+    type: "website",
+    locale: "pt_BR",
+    url: siteUrl,
+    siteName: "Recanto do Ron Ron",
+    title: siteTitle,
+    description: siteDescription,
+    images: [
+      {
+        url: "/og.png",
+        width: 1200,
+        height: 630,
+        alt: "Recanto do Ron Ron",
+      },
+    ],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: siteTitle,
+    description: siteDescription,
+    images: ["/og.png"],
   },
   formatDetection: {
     telephone: false,
