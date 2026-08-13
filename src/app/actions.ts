@@ -2,6 +2,7 @@
 
 import { getSupabaseServer } from "@/lib/supabase";
 import { isValidPhone, normalizePhone } from "@/lib/masks";
+import { notifyStaffPotentialAdopter } from "@/lib/notifyStaff";
 import { parseAnswers, toInsertRow } from "@/lib/questionnaire";
 
 export type FormState = {
@@ -44,6 +45,12 @@ export async function savePotentialAdopter(
         ok: false,
         message: "Não foi possível enviar agora. Tente novamente em instantes.",
       };
+    }
+
+    try {
+      await notifyStaffPotentialAdopter(parsed.answers.fullName);
+    } catch (pushError) {
+      console.error("Falha ao notificar a equipe:", pushError);
     }
 
     return {

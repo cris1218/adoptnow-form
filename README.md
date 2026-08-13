@@ -16,6 +16,7 @@ Hospedagem gratuita: [Vercel](https://vercel.com).
 2. Copie `.env.example` para `.env.local` e preencha:
    - `SUPABASE_URL`
    - `SUPABASE_ANON_KEY` (a mesma publishable/anon key do app)
+   - `SUPABASE_SERVICE_ROLE_KEY` (só no servidor, para avisar o celular via Expo)
 3. Instale e rode:
 
 ```bash
@@ -41,4 +42,5 @@ As respostas vão para a tabela `potential_adopters`.
 3. Em Environment Variables, cadastre:
    - `SUPABASE_URL`
    - `SUPABASE_ANON_KEY`
+   - `SUPABASE_SERVICE_ROLE_KEY`
 4. Deploy. O link gerado (ex.: `https://recantoronron.vercel.app`) é o que vai para o adotante.

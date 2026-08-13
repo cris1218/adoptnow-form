@@ -1,3 +1,9 @@
+export function getFirstName(fullName: string): string {
+  const trimmed = fullName.trim();
+  if (!trimmed) return "";
+  return trimmed.split(/\s+/)[0] ?? trimmed;
+}
+
 export function onlyDigits(value: string): string {
   return value.replace(/\D/g, "");
 }
