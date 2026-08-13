@@ -1,0 +1,49 @@
+name: Atualiza URL pública
+
+on:
+  workflow_dispatch:
+  deployment_status:
+
+jobs:
+  promote:
+    if: >
+      github.event_name == 'workflow_dispatch' ||
+      (
+        github.event.deployment_status.state == 'success' &&
+        (
+          contains(github.event.deployment.environment, 'Production') ||
+          contains(github.event.deployment.environment, 'production')
+        )
+      )
+    runs-on: ubuntu-latest
+    env:
+      VERCEL_ORG_ID: team_hXYR1cNNRH7JSIX13k65vQ0M
+      VERCEL_PROJECT_ID: prj_W37sTOuCzupwswhiE0xmtFFIeaRR
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+    steps:
+      - name: Aponta recantoronron.vercel.app e limpa o cache
+        run: |
+          set -euo pipefail
+          if [ -z "${VERCEL_TOKEN:-}" ]; then
+            echo "Falta o secret VERCEL_TOKEN no GitHub."
+            exit 1
+          fi
+
+          if [ "${{ github.event_name }}" = "deployment_status" ]; then
+            URL="${{ github.event.deployment_status.target_url }}"
+          else
+            URL="$(npx --yes vercel@41 ls --token "$VERCEL_TOKEN" --scope cris1218s-projects | grep -oE 'https://recantoronron-[a-z0-9]+-cris1218s-projects\.vercel\.app' | head -1)"
+          fi
+
+          URL="${URL#https://}"
+          URL="${URL%/}"
+
+          if [ -z "$URL" ]; then
+            echo "Não achei a URL do deploy."
+            exit 1
+          fi
+
+          echo "Apontando recantoronron.vercel.app para $URL"
+          npx --yes vercel@41 alias set "$URL" recantoronron.vercel.app --token "$VERCEL_TOKEN" --scope cris1218s-projects
+          npx --yes vercel@58 cache purge --yes --type cdn --token "$VERCEL_TOKEN" --scope cris1218s-projects
+          echo "Pronto: https://recantoronron.vercel.app"
