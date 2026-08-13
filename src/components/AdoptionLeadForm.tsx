@@ -349,8 +349,8 @@ export function AdoptionLeadForm() {
         />
         <span className="text-sm leading-relaxed text-stone-700">
           Li as regras e concordo em seguir: lar seguro com telas, envio do
-          vídeo do local e o repasse dos custos de castração, vermífugo e
-          antipulgas.
+          vídeo do local e o repasse dos custos de castração, vermífugo,
+          antipulgas e possíveis testes clínicos.
         </span>
       </label>
 
