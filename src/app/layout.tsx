@@ -14,6 +14,10 @@ export const metadata: Metadata = {
   description:
     "Questionário de adoção responsável do Recanto do Ron Ron. Leia as regras e deixe seu contato.",
   applicationName: "Recanto do Ron Ron",
+  icons: {
+    icon: [{ url: "/icon.png", type: "image/png" }],
+    apple: [{ url: "/apple-icon.png", type: "image/png" }],
+  },
   formatDetection: {
     telephone: false,
   },
