@@ -1,3 +1,5 @@
+import { readFile } from "node:fs/promises";
+import { join } from "node:path";
 import { ImageResponse } from "next/og";
 
 export const alt = "Recanto do Ron Ron";
@@ -6,10 +8,8 @@ export const contentType = "image/png";
 export const runtime = "nodejs";
 
 export default async function OpenGraphImage() {
-  const logo = await fetch(new URL("./logoRecanto.jpeg", import.meta.url)).then(
-    (res) => res.arrayBuffer(),
-  );
-  const src = `data:image/jpeg;base64,${Buffer.from(logo).toString("base64")}`;
+  const logo = await readFile(join(process.cwd(), "public/logoRecanto.jpeg"));
+  const src = `data:image/jpeg;base64,${logo.toString("base64")}`;
 
   return new ImageResponse(
     (
@@ -32,6 +32,6 @@ export default async function OpenGraphImage() {
         />
       </div>
     ),
-    { ...size }
+    { ...size },
   );
 }
