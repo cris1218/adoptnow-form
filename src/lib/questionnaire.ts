@@ -20,6 +20,10 @@ export type AdoptionAnswers = {
   sexPreferenceReason: string;
   agreedToProcess: boolean;
   agreedToCosts: boolean;
+  agreedToResponsibilityTerm: boolean;
+  agreedHomeSafe: boolean;
+  willSendVideoWhatsapp: boolean;
+  homeVideoUrl: string;
 };
 
 export function parseYesNo(value: FormDataEntryValue | null): boolean | null {
@@ -49,6 +53,24 @@ export function parseCheckbox(value: FormDataEntryValue | null): boolean {
   return String(value ?? "") === "on" || String(value ?? "") === "true";
 }
 
+const DEFAULT_R2_PUBLIC =
+  "https://pub-69fe052b8ea841d295431051a32c1c9d.r2.dev";
+
+export function isFormVideoUrl(url: string): boolean {
+  const base = (process.env.R2_PUBLIC_URL ?? DEFAULT_R2_PUBLIC).replace(
+    /\/$/,
+    ""
+  );
+  try {
+    const parsed = new URL(url);
+    return (
+      parsed.protocol === "https:" && url.startsWith(`${base}/form-videos/`)
+    );
+  } catch {
+    return false;
+  }
+}
+
 export function parseAnswers(
   formData: FormData,
   phone: string
@@ -73,6 +95,14 @@ export function parseAnswers(
   ).trim();
   const agreedToProcess = parseCheckbox(formData.get("agreedToProcess"));
   const agreedToCosts = parseCheckbox(formData.get("agreedToCosts"));
+  const agreedToResponsibilityTerm = parseCheckbox(
+    formData.get("agreedToResponsibilityTerm")
+  );
+  const agreedHomeSafe = parseCheckbox(formData.get("agreedHomeSafe"));
+  const willSendVideoWhatsapp = parseCheckbox(
+    formData.get("willSendVideoWhatsapp")
+  );
+  const homeVideoUrl = String(formData.get("homeVideoUrl") ?? "").trim();
 
   if (fullName.length < 2 || fullName.length > 120) {
     return { error: "Informe seu nome completo." };
@@ -135,6 +165,23 @@ export function parseAnswers(
     };
   }
 
+  if (!agreedToResponsibilityTerm) {
+    return {
+      error:
+        "É preciso confirmar que você está ciente de que vai assinar o termo de responsabilidade na hora da adoção.",
+    };
+  }
+
+  if (!agreedHomeSafe) {
+    return {
+      error: "Marque que a residência é segura para a adoção.",
+    };
+  }
+
+  if (!willSendVideoWhatsapp && !isFormVideoUrl(homeVideoUrl)) {
+    return { error: "Envie o vídeo do local (até 1 minuto) ou marque que vai enviar pelo WhatsApp." };
+  }
+
   return {
     answers: {
       fullName,
@@ -155,6 +202,10 @@ export function parseAnswers(
       sexPreferenceReason,
       agreedToProcess,
       agreedToCosts,
+      agreedToResponsibilityTerm,
+      agreedHomeSafe,
+      willSendVideoWhatsapp,
+      homeVideoUrl: willSendVideoWhatsapp ? "" : homeVideoUrl,
     },
   };
 }
@@ -179,6 +230,10 @@ export function toInsertRow(answers: AdoptionAnswers) {
     sex_preference_reason: answers.sexPreferenceReason,
     agreed_to_process: answers.agreedToProcess,
     agreed_to_costs: answers.agreedToCosts,
+    agreed_to_responsibility_term: answers.agreedToResponsibilityTerm,
+    agreed_home_safe: answers.agreedHomeSafe,
+    home_video_via_whatsapp: answers.willSendVideoWhatsapp,
+    home_video_url: answers.willSendVideoWhatsapp ? "" : answers.homeVideoUrl,
     status: "novo",
     source: "form_web",
   };

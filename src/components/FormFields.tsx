@@ -1,4 +1,6 @@
-import type { ReactNode } from "react";
+"use client";
+
+import { useEffect, useRef, type ReactNode } from "react";
 
 type Option<T extends string> = {
   value: T;
@@ -19,31 +21,41 @@ export function ChoiceGroup<T extends string>({
   columns?: 2 | 3;
 }) {
   return (
-    <div>
-      <div
-        className={`grid gap-2 ${columns === 3 ? "grid-cols-3" : "grid-cols-2"}`}
-      >
-        {options.map((option) => {
-          const selected = value === option.value;
-          return (
-            <button
-              key={option.value}
-              type="button"
-              onClick={() => onChange(option.value)}
-              className={`min-h-12 rounded-2xl border py-3 text-center font-semibold transition ${
-                columns === 3 ? "px-2 text-sm sm:text-base" : "px-3 text-base"
-              } ${
-                selected
-                  ? "border-brand-dark bg-brand-dark text-white"
-                  : "border-stone-300 bg-white text-stone-800 active:bg-brand-bg"
-              }`}
-            >
-              {option.label}
-            </button>
-          );
-        })}
-      </div>
-      <input type="hidden" name={name} value={value} />
+    <div
+      className={`grid gap-2 ${columns === 3 ? "grid-cols-3" : "grid-cols-2"}`}
+    >
+      {options.map((option) => {
+        const selected = value === option.value;
+        return (
+          <label
+            key={option.value}
+            className={`flex min-h-12 cursor-pointer items-center justify-center rounded-2xl border py-3 text-center font-semibold transition ${
+              columns === 3 ? "px-2 text-sm sm:text-base" : "px-3 text-base"
+            } ${
+              selected
+                ? "border-brand-dark bg-brand-dark text-white"
+                : "border-stone-300 bg-white text-stone-800 active:bg-brand-bg"
+            }`}
+          >
+            <input
+              type="radio"
+              name={name}
+              value={option.value}
+              checked={selected}
+              required
+              onChange={(event) => {
+                event.currentTarget.setCustomValidity("");
+                onChange(option.value);
+              }}
+              onInvalid={(event) => {
+                event.currentTarget.setCustomValidity("Escolha uma opção.");
+              }}
+              className="sr-only"
+            />
+            {option.label}
+          </label>
+        );
+      })}
     </div>
   );
 }
@@ -77,6 +89,32 @@ export function ToggleChip({
   );
 }
 
+export function RequiredValue({
+  filled,
+  message,
+}: {
+  filled: boolean;
+  message: string;
+}) {
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    inputRef.current?.setCustomValidity(filled ? "" : message);
+  }, [filled, message]);
+
+  return (
+    <input
+      ref={inputRef}
+      value={filled ? "ok" : ""}
+      required
+      readOnly
+      tabIndex={-1}
+      aria-hidden="true"
+      className="sr-only"
+    />
+  );
+}
+
 export function Question({
   number,
   title,
@@ -89,7 +127,7 @@ export function Question({
   children: ReactNode;
 }) {
   return (
-    <section className="rounded-2xl bg-brand-bg/70 p-4">
+    <section className="rounded-2xl bg-brand-bg/70 p-4 compact:px-2">
       <h2 className="text-base font-extrabold leading-snug text-stone-900">
         <span className="text-brand-dark">{number}.</span> {title}
       </h2>

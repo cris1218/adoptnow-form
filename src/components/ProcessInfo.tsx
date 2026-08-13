@@ -11,19 +11,20 @@ export function ProcessInfo() {
       </div>
 
       <ul className="space-y-3 text-base leading-relaxed text-stone-700">
-        <li className="rounded-2xl bg-brand-bg/80 px-4 py-3">
+        <li className="rounded-2xl bg-brand-bg/80 px-4 py-3 compact:px-2">
           Sua casa ou apartamento deve ser seguro, para que o gatinho não tenha
           acesso às ruas (janelas e muros telados).
         </li>
-        <li className="rounded-2xl bg-brand-bg/80 px-4 py-3">
-          É preciso enviar um vídeo do local onde o gatinho terá acesso.
+        <li className="rounded-2xl bg-brand-bg/80 px-4 py-3 compact:px-2">
+          É preciso enviar um vídeo do local onde o gatinho terá acesso, pelo
+          formulário ou pelo WhatsApp.
         </li>
-        <li className="rounded-2xl bg-brand-bg/80 px-4 py-3">
+        <li className="rounded-2xl bg-brand-bg/80 px-4 py-3 compact:px-2">
           É preciso assinar o termo de adoção responsável.
         </li>
       </ul>
 
-      <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-base leading-relaxed text-amber-950">
+      <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-base leading-relaxed text-amber-950 compact:px-2">
         <p className="font-bold">Nossos gatinhos saem do abrigo castrados, vermifugados e com antipulgas.</p>
         <p className="mt-2">
           Repassamos ao tutor os custos que tivemos com a castração, vermífugos e

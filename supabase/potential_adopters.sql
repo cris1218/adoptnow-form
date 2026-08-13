@@ -31,6 +31,10 @@ create table if not exists public.potential_adopters (
   sex_preference_reason text not null default '',
   agreed_to_process boolean not null default false,
   agreed_to_costs boolean not null default false,
+  agreed_to_responsibility_term boolean not null default false,
+  agreed_home_safe boolean not null default false,
+  home_video_via_whatsapp boolean not null default false,
+  home_video_url text not null default '',
   status text not null default 'novo'
     check (status in ('novo', 'contatado', 'convertido', 'descartado')),
   source text not null default 'form_web',
@@ -56,6 +60,10 @@ alter table public.potential_adopters add column if not exists sex_preference te
 alter table public.potential_adopters add column if not exists sex_preference_reason text not null default '';
 alter table public.potential_adopters add column if not exists agreed_to_process boolean not null default false;
 alter table public.potential_adopters add column if not exists agreed_to_costs boolean not null default false;
+alter table public.potential_adopters add column if not exists agreed_to_responsibility_term boolean not null default false;
+alter table public.potential_adopters add column if not exists agreed_home_safe boolean not null default false;
+alter table public.potential_adopters add column if not exists home_video_via_whatsapp boolean not null default false;
+alter table public.potential_adopters add column if not exists home_video_url text not null default '';
 
 drop index if exists potential_adopters_phone_unique;
 create index if not exists potential_adopters_phone_idx
@@ -79,10 +87,16 @@ create policy "potential_adopters_anon_insert"
     char_length(trim(full_name)) between 2 and 120
     and char_length(phone) between 10 and 11
     and phone ~ '^[0-9]+$'
-    and status = 'novo'
+    and status in ('novo', 'pendente')
     and source = 'form_web'
     and agreed_to_process = true
     and agreed_to_costs = true
+    and agreed_to_responsibility_term = true
+    and agreed_home_safe = true
+    and (
+      home_video_via_whatsapp = true
+      or home_video_url like 'https://pub-69fe052b8ea841d295431051a32c1c9d.r2.dev/form-videos/%'
+    )
     and home_type in ('casa', 'apartamento')
     and sex_preference in ('femea', 'macho', 'indiferente')
   );

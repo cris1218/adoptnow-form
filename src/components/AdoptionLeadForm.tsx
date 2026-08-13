@@ -3,7 +3,8 @@
 import { useActionState, useState } from "react";
 
 import { savePotentialAdopter, type FormState } from "@/app/actions";
-import { ChoiceGroup, Question, ToggleChip } from "@/components/FormFields";
+import { ChoiceGroup, Question, RequiredValue, ToggleChip } from "@/components/FormFields";
+import { HomeVideoField } from "@/components/HomeVideoField";
 import { PawMark } from "@/components/PawMark";
 import { maskPhone } from "@/lib/masks";
 import type { HomeType, SexPreference } from "@/lib/questionnaire";
@@ -88,7 +89,16 @@ export function AdoptionLeadForm() {
   }
 
   return (
-    <form action={action} className="flex flex-col gap-5">
+    <form
+      action={action}
+      className="flex flex-col gap-5"
+      onInvalid={(event) => {
+        const field = event.target as HTMLElement;
+        field
+          .closest("section, label, div")
+          ?.scrollIntoView({ behavior: "smooth", block: "center" });
+      }}
+    >
       <label className="sr-only" htmlFor="company">
         Empresa
       </label>
@@ -147,6 +157,10 @@ export function AdoptionLeadForm() {
       <h2 className="pt-2 text-xl font-extrabold text-stone-900">Questionário</h2>
 
       <Question number={1} title="Já teve animais?">
+        <RequiredValue
+          filled={neverHadAnimals || hadCats || hadDogs}
+          message="Informe se já teve gatos, cães, ou se nunca teve animais."
+        />
         <div className="grid grid-cols-2 gap-2">
           <ToggleChip name="hadCats" checked={hadCats} onChange={selectHadCats}>
             Gatos
@@ -245,6 +259,8 @@ export function AdoptionLeadForm() {
         />
       </Question>
 
+      <HomeVideoField />
+
       <Question
         number={6}
         title="É casa ou apartamento?"
@@ -262,6 +278,10 @@ export function AdoptionLeadForm() {
       </Question>
 
       <Question number={7} title="Você deseja adotar?">
+        <RequiredValue
+          filled={wantsKitten || wantsAdult}
+          message="Informe se deseja adotar filhote, adulto ou ambos."
+        />
         <div className="grid grid-cols-2 gap-2">
           <ToggleChip
             name="wantsKitten"
@@ -312,14 +332,14 @@ export function AdoptionLeadForm() {
         ) : null}
       </Question>
 
-      <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-relaxed text-amber-950">
+      <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-relaxed text-amber-950 compact:px-2">
         Todo tutor deve ter condições de manter um animal, com ração, areia e
         cuidados veterinários. Não é preciso ser rico, mas é fundamental ter
         recursos para as despesas, principalmente se precisar de atendimento
         veterinário.
       </div>
 
-      <label className="flex gap-3 rounded-2xl border border-stone-300 bg-white p-4">
+      <label className="flex gap-3 rounded-2xl border border-stone-300 bg-white p-4 compact:px-2">
         <input
           type="checkbox"
           name="agreedToProcess"
@@ -329,12 +349,12 @@ export function AdoptionLeadForm() {
         />
         <span className="text-sm leading-relaxed text-stone-700">
           Li as regras e concordo em seguir: lar seguro com telas, envio do
-          vídeo do local, assinatura do termo e o repasse dos custos de
-          castração, vermífugo e antipulgas.
+          vídeo do local e o repasse dos custos de castração, vermífugo e
+          antipulgas.
         </span>
       </label>
 
-      <label className="flex gap-3 rounded-2xl border border-stone-300 bg-white p-4">
+      <label className="flex gap-3 rounded-2xl border border-stone-300 bg-white p-4 compact:px-2">
         <input
           type="checkbox"
           name="agreedToCosts"
@@ -348,6 +368,20 @@ export function AdoptionLeadForm() {
         </span>
       </label>
 
+      <label className="flex gap-3 rounded-2xl border border-stone-300 bg-white p-4 compact:px-2">
+        <input
+          type="checkbox"
+          name="agreedToResponsibilityTerm"
+          value="true"
+          required
+          className="mt-1 h-5 w-5 shrink-0 accent-[#148B87]"
+        />
+        <span className="text-sm leading-relaxed text-stone-700">
+          Estou ciente de que, na hora da adoção, vou assinar um termo de
+          responsabilidade.
+        </span>
+      </label>
+
       {state && !state.ok ? (
         <p
           role="alert"
@@ -357,7 +391,7 @@ export function AdoptionLeadForm() {
         </p>
       ) : null}
 
-      <div className="sticky bottom-0 -mx-6 mt-1 border-t border-stone-200 bg-white/95 px-6 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] backdrop-blur-sm">
+      <div className="sticky bottom-0 -mx-6 mt-1 border-t border-stone-200 bg-white/95 px-6 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] backdrop-blur-sm compact:-mx-3 compact:px-3">
         <button
           type="submit"
           disabled={pending}
