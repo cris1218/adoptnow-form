@@ -19,8 +19,8 @@ Hospedagem gratuita: [Vercel](https://vercel.com).
 3. Instale e rode:
 
 ```bash
-npm install
-npm run dev
+yarn
+yarn dev
 ```
 
 Abra [http://localhost:3000](http://localhost:3000).

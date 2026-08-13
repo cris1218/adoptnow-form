@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "description": "Formulário web de possíveis adotantes do Recanto do Ron Ron",
+  "packageManager": "yarn@1.22.22",
   "scripts": {
     "dev": "next dev",
     "build": "next build",
