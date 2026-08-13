@@ -41,4 +41,4 @@ As respostas vão para a tabela `potential_adopters`.
 3. Em Environment Variables, cadastre:
    - `SUPABASE_URL`
    - `SUPABASE_ANON_KEY`
-4. Deploy. O link gerado (ex.: `https://adoptnow-form.vercel.app`) é o que vai para o adotante.
+4. Deploy. O link gerado (ex.: `https://recantoronron.vercel.app`) é o que vai para o adotante.
