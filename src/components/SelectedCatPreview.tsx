@@ -1,11 +1,12 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef } from "react";
 
 import { PawMark } from "@/components/PawMark";
 import {
-  formatBirthDateApprox,
+  formatApproximateAge,
   formatCatSexLabel,
+  formatFivFelvResult,
   formatIsoDateBr,
   type AvailableAdoptionCat,
 } from "@/lib/availableCats";
@@ -24,26 +25,39 @@ function Detail({ label, value }: { label: string; value: string }) {
 }
 
 export function SelectedCatPreview({ cat }: { cat: AvailableAdoptionCat }) {
-  const [photoOpen, setPhotoOpen] = useState(false);
+  const dialogRef = useRef<HTMLDialogElement>(null);
   const photoUrl = cat.photoUrl;
   const quarantineUntil = formatIsoDateBr(cat.quarantineReleasedAt);
+  const fiv = formatFivFelvResult(cat.fiv);
+  const felv = formatFivFelvResult(cat.felv);
 
   useEffect(() => {
-    if (!photoOpen) return;
+    const dialog = dialogRef.current;
+    if (!dialog) return;
 
-    function onKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape") setPhotoOpen(false);
+    function onClose() {
+      document.body.style.overflow = "";
     }
 
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    window.addEventListener("keydown", onKeyDown);
-
+    dialog.addEventListener("close", onClose);
     return () => {
-      document.body.style.overflow = previousOverflow;
-      window.removeEventListener("keydown", onKeyDown);
+      dialog.removeEventListener("close", onClose);
+      document.body.style.overflow = "";
     };
-  }, [photoOpen]);
+  }, []);
+
+  function openPhoto() {
+    const dialog = dialogRef.current;
+    if (!dialog || !photoUrl) return;
+    if (!dialog.open) dialog.showModal();
+    document.body.style.overflow = "hidden";
+  }
+
+  function closePhoto() {
+    const dialog = dialogRef.current;
+    if (dialog?.open) dialog.close();
+    document.body.style.overflow = "";
+  }
 
   return (
     <>
@@ -54,14 +68,16 @@ export function SelectedCatPreview({ cat }: { cat: AvailableAdoptionCat }) {
             <Detail label="Cor do pelo" value={cat.furColor || "Não informada"} />
             <Detail label="Sexo" value={formatCatSexLabel(cat.sex)} />
             <Detail
-              label="Nascimento aprox."
-              value={formatBirthDateApprox(cat.birthDateApprox)}
+              label="Idade aprox."
+              value={formatApproximateAge(cat.birthDateApprox)}
             />
+            {fiv ? <Detail label="FIV" value={fiv} /> : null}
+            {felv ? <Detail label="FELV" value={felv} /> : null}
           </div>
           {photoUrl ? (
             <button
               type="button"
-              onClick={() => setPhotoOpen(true)}
+              onClick={openPhoto}
               className="h-24 w-24 shrink-0 overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-stone-200"
               aria-label={`Ampliar foto de ${cat.name}`}
             >
@@ -85,29 +101,40 @@ export function SelectedCatPreview({ cat }: { cat: AvailableAdoptionCat }) {
         ) : null}
       </div>
 
-      {photoOpen && photoUrl ? (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4"
-          onClick={() => setPhotoOpen(false)}
-          role="dialog"
-          aria-modal="true"
+      {photoUrl ? (
+        <dialog
+          ref={dialogRef}
           aria-label={`Foto de ${cat.name}`}
+          onClick={(event) => {
+            if (event.target === event.currentTarget) closePhoto();
+          }}
+          onCancel={closePhoto}
+          className="fixed inset-0 z-50 m-0 h-dvh max-h-none w-screen max-w-none border-0 bg-black/85 p-0 open:flex"
         >
-          <button
-            type="button"
-            className="absolute right-4 top-4 rounded-full bg-white/90 px-3 py-1 text-sm font-semibold text-stone-800"
-            onClick={() => setPhotoOpen(false)}
+          <div
+            className="relative flex h-full w-full items-center justify-center px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-[max(4.5rem,calc(env(safe-area-inset-top)+3.5rem))]"
+            onClick={closePhoto}
           >
-            Fechar
-          </button>
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src={photoUrl}
-            alt={cat.name}
-            className="max-h-[85dvh] max-w-[min(92vw,40rem)] rounded-2xl object-contain shadow-2xl"
-            onClick={(event) => event.stopPropagation()}
-          />
-        </div>
+            <button
+              type="button"
+              onClick={(event) => {
+                event.stopPropagation();
+                closePhoto();
+              }}
+              className="absolute right-4 top-[max(0.75rem,env(safe-area-inset-top))] flex h-11 w-11 items-center justify-center rounded-full bg-white text-xl font-bold leading-none text-stone-800 shadow-lg"
+              aria-label="Fechar foto"
+            >
+              ×
+            </button>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={photoUrl}
+              alt={cat.name}
+              className="max-h-full max-w-full object-contain"
+              onClick={(event) => event.stopPropagation()}
+            />
+          </div>
+        </dialog>
       ) : null}
     </>
   );

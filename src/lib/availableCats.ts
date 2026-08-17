@@ -8,6 +8,8 @@ export type AvailableAdoptionCat = {
   birthDateApprox: string | null;
   photoUrl: string;
   quarantineReleasedAt: string | null;
+  fiv: string;
+  felv: string;
 };
 
 export function formatCatSex(sex: string): string {
@@ -29,8 +31,47 @@ export function formatIsoDateBr(value: string | null | undefined): string {
   return `${day}/${month}/${year}`;
 }
 
-export function formatBirthDateApprox(value: string | null | undefined): string {
-  return formatIsoDateBr(value) || "Não informada";
+export function formatApproximateAge(value: string | null | undefined): string {
+  const raw = (value ?? "").trim().slice(0, 10);
+  const [yearStr, monthStr, dayStr] = raw.split("-");
+  const birthYear = Number(yearStr);
+  const birthMonth = Number(monthStr);
+  const birthDay = Number(dayStr);
+  if (!birthYear || !birthMonth || !birthDay) return "Não informada";
+
+  const now = new Date();
+  let years = now.getFullYear() - birthYear;
+  let months = now.getMonth() + 1 - birthMonth;
+
+  if (now.getDate() < birthDay) {
+    months -= 1;
+  }
+  if (months < 0) {
+    years -= 1;
+    months += 12;
+  }
+
+  if (years < 0) return "Não informada";
+  if (years === 0 && months === 0) return "menos de 1 mês";
+
+  const parts: string[] = [];
+  if (years > 0) {
+    parts.push(`${years} ${years === 1 ? "ano" : "anos"}`);
+  }
+  if (months > 0) {
+    parts.push(`${months} ${months === 1 ? "mês" : "meses"}`);
+  }
+
+  return parts.join(" e ");
+}
+
+export function formatFivFelvResult(
+  value: string | null | undefined,
+): string | null {
+  const result = (value ?? "").trim().toLowerCase();
+  if (result === "positivo") return "Positivo";
+  if (result === "negativo") return "Negativo";
+  return null;
 }
 
 type AvailableAdoptionCatRow = {
@@ -41,6 +82,8 @@ type AvailableAdoptionCatRow = {
   birth_date_approx?: string | null;
   photo_url?: string | null;
   quarantine_released_at?: string | null;
+  fiv?: string | null;
+  felv?: string | null;
 };
 
 export async function listAvailableAdoptionCats(
@@ -62,6 +105,8 @@ export async function listAvailableAdoptionCats(
       birthDateApprox: row.birth_date_approx ?? null,
       photoUrl: (row.photo_url ?? "").trim(),
       quarantineReleasedAt: row.quarantine_released_at ?? null,
+      fiv: (row.fiv ?? "").trim(),
+      felv: (row.felv ?? "").trim(),
     }))
     .filter((row) => row.id && row.name);
 }

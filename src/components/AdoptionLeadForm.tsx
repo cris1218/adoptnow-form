@@ -197,27 +197,45 @@ export function AdoptionLeadForm() {
         >
           Qual gatinho tem interesse?
         </label>
-        <select
-          id="interestedCatId"
-          name="interestedCatId"
-          required={!loadingCats}
-          disabled={loadingCats}
-          value={interestedCatId}
-          onChange={(event) => setInterestedCatId(event.target.value)}
-          className="h-14 w-full rounded-2xl border border-stone-300 bg-white px-4 text-base text-stone-900 outline-none ring-brand-light focus:border-brand-light focus:ring-2 disabled:text-stone-400"
-        >
-          <option value="">
-            {loadingCats ? "Carregando gatinhos..." : "Selecione o gatinho"}
-          </option>
-            {availableCats.map((cat) => (
-            <option key={cat.id} value={cat.id}>
-              {cat.name}
-              {cat.sex ? ` (${formatCatSex(cat.sex)})` : ""}
-              {cat.quarantineReleasedAt ? " · quarentena" : ""}
+        <div className="relative">
+          <select
+            id="interestedCatId"
+            name="interestedCatId"
+            required={!loadingCats}
+            disabled={loadingCats}
+            value={interestedCatId}
+            onChange={(event) => setInterestedCatId(event.target.value)}
+            className="h-14 w-full appearance-none rounded-2xl border border-stone-300 bg-white px-4 pr-12 text-base text-stone-900 outline-none ring-brand-light focus:border-brand-light focus:ring-2 disabled:text-stone-400"
+          >
+            <option value="">
+              {loadingCats ? "Carregando gatinhos..." : "Selecione o gatinho"}
             </option>
-          ))}
-          <option value={INTERESTED_CAT_OTHER}>Outros</option>
-        </select>
+            {availableCats.map((cat) => (
+              <option key={cat.id} value={cat.id}>
+                {cat.name}
+                {cat.sex ? ` (${formatCatSex(cat.sex)})` : ""}
+                {cat.quarantineReleasedAt ? " · quarentena" : ""}
+              </option>
+            ))}
+            <option value={INTERESTED_CAT_OTHER}>Outros</option>
+          </select>
+          <span className="pointer-events-none absolute inset-y-0 right-4 flex items-center text-stone-500">
+            <svg
+              viewBox="0 0 20 20"
+              className="h-5 w-5"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              aria-hidden="true"
+            >
+              <path
+                d="M6 8l4 4 4-4"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+          </span>
+        </div>
         {interestedCatId === INTERESTED_CAT_OTHER ? (
           <input
             id="interestedCatOtherName"
