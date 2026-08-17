@@ -1,5 +1,6 @@
 "use server";
 
+import { listAvailableAdoptionCats } from "@/lib/availableCats";
 import { getSupabaseServer } from "@/lib/supabase";
 import { isValidPhone, normalizePhone } from "@/lib/masks";
 import { notifyStaffPotentialAdopter } from "@/lib/notifyStaff";
@@ -35,9 +36,38 @@ export async function savePotentialAdopter(
 
   try {
     const supabase = getSupabaseServer();
+    const availableCats = await listAvailableAdoptionCats(supabase);
+    const requestedId = parsed.answers.interestedCatId;
+    const selectedCat = requestedId
+      ? availableCats.find((cat) => cat.id === requestedId)
+      : undefined;
+
+    if (parsed.answers.interestedCatOther) {
+      if (parsed.answers.interestedCatName.length < 2) {
+        return { ok: false, message: "Informe o nome do gatinho." };
+      }
+    } else if (!selectedCat) {
+      return {
+        ok: false,
+        message: requestedId
+          ? "Esse gatinho não está mais disponível. Escolha outro."
+          : "Selecione o gatinho que tem interesse.",
+      };
+    }
+
+    const answers = {
+      ...parsed.answers,
+      interestedCatId: parsed.answers.interestedCatOther
+        ? null
+        : selectedCat?.id ?? null,
+      interestedCatName: parsed.answers.interestedCatOther
+        ? parsed.answers.interestedCatName
+        : selectedCat?.name ?? parsed.answers.interestedCatName,
+    };
+
     const { error } = await supabase
       .from("potential_adopters")
-      .insert(toInsertRow(parsed.answers));
+      .insert(toInsertRow(answers));
 
     if (error) {
       console.error("Erro ao salvar possível adotante:", error);
@@ -48,7 +78,10 @@ export async function savePotentialAdopter(
     }
 
     try {
-      await notifyStaffPotentialAdopter(parsed.answers.fullName);
+      await notifyStaffPotentialAdopter(
+        parsed.answers.fullName,
+        answers.interestedCatName
+      );
     } catch (pushError) {
       console.error("Falha ao notificar a equipe:", pushError);
     }
@@ -64,5 +97,14 @@ export async function savePotentialAdopter(
       ok: false,
       message: "Não foi possível enviar agora. Tente novamente em instantes.",
     };
+  }
+}
+
+export async function loadAvailableAdoptionCats() {
+  try {
+    return await listAvailableAdoptionCats(getSupabaseServer());
+  } catch (error) {
+    console.error("Falha ao listar gatos disponíveis:", error);
+    return [];
   }
 }

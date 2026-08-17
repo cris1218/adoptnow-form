@@ -9,7 +9,8 @@ type PushTokenRow = {
 };
 
 export async function notifyStaffPotentialAdopter(
-  fullName: string
+  fullName: string,
+  interestedCatName = ""
 ): Promise<void> {
   const supabase = getSupabaseAdmin();
   if (!supabase) {
@@ -39,8 +40,11 @@ export async function notifyStaffPotentialAdopter(
   if (tokens.length === 0) return;
 
   const firstName = getFirstName(fullName) || "Alguém";
+  const catName = interestedCatName.trim();
   const title = "Possível adotante";
-  const body = `${firstName} tem interesse em adotar um gatinho.`;
+  const body = catName
+    ? `${firstName} tem interesse em ${catName}.`
+    : `${firstName} tem interesse em adotar um gatinho.`;
 
   for (let index = 0; index < tokens.length; index += EXPO_BATCH_SIZE) {
     const batch = tokens.slice(index, index + EXPO_BATCH_SIZE);
@@ -52,6 +56,7 @@ export async function notifyStaffPotentialAdopter(
       data: {
         type: "potential-adopter",
         fullName,
+        interestedCatName: catName,
       },
     }));
 

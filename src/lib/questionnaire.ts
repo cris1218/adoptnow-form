@@ -1,9 +1,14 @@
 export type HomeType = "casa" | "apartamento";
 export type SexPreference = "femea" | "macho" | "indiferente";
 
+export const INTERESTED_CAT_OTHER = "outros";
+
 export type AdoptionAnswers = {
   fullName: string;
   phone: string;
+  interestedCatId: string | null;
+  interestedCatName: string;
+  interestedCatOther: boolean;
   neverHadAnimals: boolean;
   hadCats: boolean;
   hadDogs: boolean;
@@ -103,9 +108,24 @@ export function parseAnswers(
     formData.get("willSendVideoWhatsapp")
   );
   const homeVideoUrl = String(formData.get("homeVideoUrl") ?? "").trim();
+  const interestedCatIdRaw = String(formData.get("interestedCatId") ?? "").trim();
+  const interestedCatOther = interestedCatIdRaw === INTERESTED_CAT_OTHER;
+  const interestedCatName = String(
+    formData.get(
+      interestedCatOther ? "interestedCatOtherName" : "interestedCatName"
+    ) ?? ""
+  ).trim();
 
   if (fullName.length < 2 || fullName.length > 120) {
     return { error: "Informe seu nome completo." };
+  }
+
+  if (!interestedCatIdRaw) {
+    return { error: "Selecione o gatinho que tem interesse." };
+  }
+
+  if (interestedCatOther && (interestedCatName.length < 2 || interestedCatName.length > 80)) {
+    return { error: "Informe o nome do gatinho." };
   }
 
   if (!neverHadAnimals && !hadCats && !hadDogs) {
@@ -186,6 +206,9 @@ export function parseAnswers(
     answers: {
       fullName,
       phone,
+      interestedCatId: interestedCatOther ? null : interestedCatIdRaw || null,
+      interestedCatName,
+      interestedCatOther,
       neverHadAnimals,
       hadCats: neverHadAnimals ? false : hadCats,
       hadDogs: neverHadAnimals ? false : hadDogs,
@@ -214,6 +237,8 @@ export function toInsertRow(answers: AdoptionAnswers) {
   return {
     full_name: answers.fullName,
     phone: answers.phone,
+    interested_cat_id: answers.interestedCatId,
+    interested_cat_name: answers.interestedCatName,
     never_had_animals: answers.neverHadAnimals,
     had_cats: answers.hadCats,
     had_dogs: answers.hadDogs,

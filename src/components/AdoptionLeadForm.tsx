@@ -1,13 +1,26 @@
 "use client";
 
-import { useActionState, useState } from "react";
+import { useActionState, useEffect, useState } from "react";
 
-import { savePotentialAdopter, type FormState } from "@/app/actions";
+import {
+  loadAvailableAdoptionCats,
+  savePotentialAdopter,
+  type FormState,
+} from "@/app/actions";
 import { ChoiceGroup, Question, RequiredValue, ToggleChip } from "@/components/FormFields";
 import { HomeVideoField } from "@/components/HomeVideoField";
 import { PawMark } from "@/components/PawMark";
+import { SelectedCatPreview } from "@/components/SelectedCatPreview";
+import {
+  formatCatSex,
+  type AvailableAdoptionCat,
+} from "@/lib/availableCats";
 import { maskPhone } from "@/lib/masks";
-import type { HomeType, SexPreference } from "@/lib/questionnaire";
+import {
+  INTERESTED_CAT_OTHER,
+  type HomeType,
+  type SexPreference,
+} from "@/lib/questionnaire";
 
 const initialState: FormState = null;
 
@@ -22,6 +35,12 @@ export function AdoptionLeadForm() {
     initialState
   );
   const [phone, setPhone] = useState("");
+  const [availableCats, setAvailableCats] = useState<AvailableAdoptionCat[]>(
+    []
+  );
+  const [loadingCats, setLoadingCats] = useState(true);
+  const [interestedCatId, setInterestedCatId] = useState("");
+  const [otherCatName, setOtherCatName] = useState("");
   const [neverHadAnimals, setNeverHadAnimals] = useState(false);
   const [hadCats, setHadCats] = useState(false);
   const [hadDogs, setHadDogs] = useState(false);
@@ -36,7 +55,24 @@ export function AdoptionLeadForm() {
   const [wantsAdult, setWantsAdult] = useState(false);
   const [sexPreference, setSexPreference] = useState<SexPreference | "">("");
 
+  useEffect(() => {
+    let cancelled = false;
+
+    void loadAvailableAdoptionCats()
+      .then((cats) => {
+        if (!cancelled) setAvailableCats(cats);
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingCats(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const hadAnimals = hadCats || hadDogs;
+  const selectedCat = availableCats.find((cat) => cat.id === interestedCatId);
 
   function selectNeverHad(next: boolean) {
     setNeverHadAnimals(next);
@@ -152,6 +188,64 @@ export function AdoptionLeadForm() {
           onChange={(event) => setPhone(maskPhone(event.target.value))}
           className="h-14 w-full rounded-2xl border border-stone-300 bg-white px-4 text-base text-stone-900 outline-none ring-brand-light placeholder:text-stone-400 focus:border-brand-light focus:ring-2"
         />
+      </div>
+
+      <div>
+        <label
+          htmlFor="interestedCatId"
+          className="mb-2 block text-sm font-semibold text-stone-700"
+        >
+          Qual gatinho tem interesse?
+        </label>
+        <select
+          id="interestedCatId"
+          name="interestedCatId"
+          required={!loadingCats}
+          disabled={loadingCats}
+          value={interestedCatId}
+          onChange={(event) => setInterestedCatId(event.target.value)}
+          className="h-14 w-full rounded-2xl border border-stone-300 bg-white px-4 text-base text-stone-900 outline-none ring-brand-light focus:border-brand-light focus:ring-2 disabled:text-stone-400"
+        >
+          <option value="">
+            {loadingCats ? "Carregando gatinhos..." : "Selecione o gatinho"}
+          </option>
+            {availableCats.map((cat) => (
+            <option key={cat.id} value={cat.id}>
+              {cat.name}
+              {cat.sex ? ` (${formatCatSex(cat.sex)})` : ""}
+              {cat.quarantineReleasedAt ? " · quarentena" : ""}
+            </option>
+          ))}
+          <option value={INTERESTED_CAT_OTHER}>Outros</option>
+        </select>
+        {interestedCatId === INTERESTED_CAT_OTHER ? (
+          <input
+            id="interestedCatOtherName"
+            name="interestedCatOtherName"
+            type="text"
+            required
+            minLength={2}
+            maxLength={80}
+            autoCapitalize="words"
+            autoCorrect="off"
+            placeholder="Qual o nome do gatinho?"
+            value={otherCatName}
+            onChange={(event) => setOtherCatName(event.target.value)}
+            className="mt-3 h-14 w-full rounded-2xl border border-stone-300 bg-white px-4 text-base text-stone-900 outline-none ring-brand-light placeholder:text-stone-400 focus:border-brand-light focus:ring-2"
+          />
+        ) : (
+          <input
+            type="hidden"
+            name="interestedCatName"
+            value={
+              availableCats.find((cat) => cat.id === interestedCatId)?.name ??
+              ""
+            }
+          />
+        )}
+        {selectedCat ? (
+          <SelectedCatPreview key={selectedCat.id} cat={selectedCat} />
+        ) : null}
       </div>
 
       <h2 className="pt-2 text-xl font-extrabold text-stone-900">Questionário</h2>
@@ -394,10 +488,14 @@ export function AdoptionLeadForm() {
       <div className="sticky bottom-0 -mx-6 mt-1 border-t border-stone-200 bg-white/95 px-6 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] backdrop-blur-sm compact:-mx-3 compact:px-3">
         <button
           type="submit"
-          disabled={pending}
+          disabled={pending || loadingCats}
           className="flex h-14 w-full items-center justify-center rounded-2xl bg-brand-dark text-lg font-semibold text-white shadow-sm transition active:scale-[0.99] enabled:hover:bg-brand-950 disabled:opacity-60"
         >
-          {pending ? "Enviando..." : "Enviar questionário"}
+          {pending
+            ? "Enviando..."
+            : loadingCats
+              ? "Carregando..."
+              : "Enviar questionário"}
         </button>
       </div>
     </form>
