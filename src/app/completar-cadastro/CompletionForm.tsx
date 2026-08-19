@@ -20,15 +20,17 @@ const inputClass =
 export function CompletionForm({
   token,
   phoneCipher,
+  preview = false,
 }: {
   token: string;
   phoneCipher: string;
+  preview?: boolean;
 }) {
   const [state, action, pending] = useActionState(
     submitAdopterCompletion,
     initialState
   );
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(!preview);
   const [loadError, setLoadError] = useState("");
   const [document, setDocument] = useState("");
   const [cep, setCep] = useState("");
@@ -41,6 +43,8 @@ export function CompletionForm({
   const numberInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
+    if (preview) return;
+
     let cancelled = false;
 
     void loadAdopterCompletion(token, phoneCipher).then((result) => {
@@ -64,7 +68,7 @@ export function CompletionForm({
     return () => {
       cancelled = true;
     };
-  }, [token, phoneCipher]);
+  }, [preview, token, phoneCipher]);
 
   async function handleCepChange(value: string) {
     const masked = maskCep(value);
@@ -140,8 +144,15 @@ export function CompletionForm({
 
   return (
     <form
-      action={action}
+      action={preview ? undefined : action}
       className="flex flex-col gap-5"
+      onSubmit={
+        preview
+          ? (event) => {
+              event.preventDefault();
+            }
+          : undefined
+      }
       onInvalid={(event) => {
         const field = event.target as HTMLElement;
         field
@@ -151,6 +162,12 @@ export function CompletionForm({
     >
       <input type="hidden" name="token" value={token} />
       <input type="hidden" name="phoneCipher" value={phoneCipher} />
+
+      {preview ? (
+        <p className="rounded-xl bg-amber-50 px-4 py-3 text-sm font-medium leading-relaxed text-amber-900">
+          Visualização de teste. O envio está desativado.
+        </p>
+      ) : null}
 
       <div>
         <h2 className="text-xl font-extrabold text-stone-900">
@@ -301,10 +318,10 @@ export function CompletionForm({
       <div className="sticky bottom-0 -mx-6 mt-1 border-t border-stone-200 bg-white/95 px-6 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] backdrop-blur-sm compact:-mx-3 compact:px-3">
         <button
           type="submit"
-          disabled={pending}
+          disabled={preview || pending}
           className="flex h-14 w-full items-center justify-center rounded-2xl bg-brand-dark text-lg font-semibold text-white shadow-sm transition active:scale-[0.99] enabled:hover:bg-brand-950 disabled:opacity-60"
         >
-          {pending ? "Enviando..." : "Enviar dados"}
+          {preview ? "Envio desativado" : pending ? "Enviando..." : "Enviar dados"}
         </button>
       </div>
     </form>
