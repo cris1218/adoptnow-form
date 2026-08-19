@@ -11,6 +11,7 @@ import { ChoiceGroup, Question, RequiredValue, ToggleChip } from "@/components/F
 import { HomeVideoField } from "@/components/HomeVideoField";
 import { LgpdNotice } from "@/components/LgpdNotice";
 import { PawMark } from "@/components/PawMark";
+import { SearchableSelect } from "@/components/SearchableSelect";
 import { SelectedCatPreview } from "@/components/SelectedCatPreview";
 import {
   formatCatSex,
@@ -30,7 +31,13 @@ const yesNo = [
   { value: "nao", label: "Não" },
 ] as const;
 
-export function AdoptionLeadForm() {
+export function AdoptionLeadForm({
+  token,
+  preview = false,
+}: {
+  token: string;
+  preview?: boolean;
+}) {
   const [state, action, pending] = useActionState(
     savePotentialAdopter,
     initialState
@@ -127,8 +134,15 @@ export function AdoptionLeadForm() {
 
   return (
     <form
-      action={action}
+      action={preview ? undefined : action}
       className="flex flex-col gap-5"
+      onSubmit={
+        preview
+          ? (event) => {
+              event.preventDefault();
+            }
+          : undefined
+      }
       onInvalid={(event) => {
         const field = event.target as HTMLElement;
         field
@@ -136,6 +150,13 @@ export function AdoptionLeadForm() {
           ?.scrollIntoView({ behavior: "smooth", block: "center" });
       }}
     >
+      {preview ? (
+        <p className="rounded-xl bg-amber-50 px-4 py-3 text-sm font-medium leading-relaxed text-amber-900">
+          Visualização de teste. O envio está desativado.
+        </p>
+      ) : null}
+
+      <input type="hidden" name="accessToken" value={token} />
       <label className="sr-only" htmlFor="company">
         Empresa
       </label>
@@ -198,45 +219,34 @@ export function AdoptionLeadForm() {
         >
           Qual gatinho tem interesse?
         </label>
-        <div className="relative">
-          <select
-            id="interestedCatId"
-            name="interestedCatId"
-            required={!loadingCats}
-            disabled={loadingCats}
-            value={interestedCatId}
-            onChange={(event) => setInterestedCatId(event.target.value)}
-            className="h-14 w-full appearance-none rounded-2xl border border-stone-300 bg-white px-4 pr-12 text-base text-stone-900 outline-none ring-brand-light focus:border-brand-light focus:ring-2 disabled:text-stone-400"
-          >
-            <option value="">
-              {loadingCats ? "Carregando gatinhos..." : "Selecione o gatinho"}
-            </option>
-            {availableCats.map((cat) => (
-              <option key={cat.id} value={cat.id}>
-                {cat.name}
-                {cat.sex ? ` (${formatCatSex(cat.sex)})` : ""}
-                {cat.quarantineReleasedAt ? " · quarentena" : ""}
-              </option>
-            ))}
-            <option value={INTERESTED_CAT_OTHER}>Outros</option>
-          </select>
-          <span className="pointer-events-none absolute inset-y-0 right-4 flex items-center text-stone-500">
-            <svg
-              viewBox="0 0 20 20"
-              className="h-5 w-5"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              aria-hidden="true"
-            >
-              <path
-                d="M6 8l4 4 4-4"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-            </svg>
-          </span>
-        </div>
+        <SearchableSelect
+          id="interestedCatId"
+          name="interestedCatId"
+          value={interestedCatId}
+          onChange={setInterestedCatId}
+          disabled={loadingCats}
+          required={!loadingCats}
+          placeholder={
+            loadingCats ? "Carregando gatinhos..." : "Selecione o gatinho"
+          }
+          searchPlaceholder="Buscar gatinho..."
+          emptyMessage="Nenhum gatinho encontrado"
+          options={availableCats.map((cat) => ({
+            value: cat.id,
+            label: cat.name,
+            description: [
+              cat.sex ? formatCatSex(cat.sex) : null,
+              cat.quarantineReleasedAt ? "quarentena" : null,
+            ]
+              .filter(Boolean)
+              .join(" · "),
+          }))}
+          fallbackOption={{
+            value: INTERESTED_CAT_OTHER,
+            label: "Outros",
+            description: "Não está na lista",
+          }}
+        />
         {interestedCatId === INTERESTED_CAT_OTHER ? (
           <input
             id="interestedCatOtherName"
@@ -523,14 +533,16 @@ export function AdoptionLeadForm() {
       <div className="sticky bottom-0 -mx-6 mt-1 border-t border-stone-200 bg-white/95 px-6 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] backdrop-blur-sm compact:-mx-3 compact:px-3">
         <button
           type="submit"
-          disabled={pending || loadingCats}
+          disabled={preview || pending || loadingCats}
           className="flex h-14 w-full items-center justify-center rounded-2xl bg-brand-dark text-lg font-semibold text-white shadow-sm transition active:scale-[0.99] enabled:hover:bg-brand-950 disabled:opacity-60"
         >
-          {pending
-            ? "Enviando..."
-            : loadingCats
-              ? "Carregando..."
-              : "Enviar questionário"}
+          {preview
+            ? "Envio desativado"
+            : pending
+              ? "Enviando..."
+              : loadingCats
+                ? "Carregando..."
+                : "Enviar questionário"}
         </button>
       </div>
     </form>

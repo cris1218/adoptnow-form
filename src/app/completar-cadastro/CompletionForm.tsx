@@ -184,37 +184,52 @@ export function CompletionForm({
         </p>
       </div>
 
-      {!preview ? (
-        <>
-          <div>
-            <label htmlFor="fullName" className="mb-2 block text-sm font-semibold text-stone-700">
-              Nome completo
-            </label>
-            <input
-              id="fullName"
-              name="fullName"
-              value={fullName}
-              disabled
-              readOnly
-              className={inputClass}
-            />
-          </div>
+      <div>
+        <label htmlFor="fullName" className="mb-2 block text-sm font-semibold text-stone-700">
+          Nome completo
+        </label>
+        <input
+          id="fullName"
+          name="fullName"
+          value={fullName}
+          disabled={!preview}
+          readOnly={!preview}
+          required={preview}
+          autoComplete="name"
+          autoCapitalize="words"
+          placeholder={preview ? "Nome e sobrenome" : undefined}
+          onChange={
+            preview
+              ? (event) => setFullName(event.target.value)
+              : undefined
+          }
+          className={inputClass}
+        />
+      </div>
 
-          <div>
-            <label htmlFor="phone" className="mb-2 block text-sm font-semibold text-stone-700">
-              Telefone
-            </label>
-            <input
-              id="phone"
-              name="phone"
-              value={phone}
-              disabled
-              readOnly
-              className={inputClass}
-            />
-          </div>
-        </>
-      ) : null}
+      <div>
+        <label htmlFor="phone" className="mb-2 block text-sm font-semibold text-stone-700">
+          Telefone
+        </label>
+        <input
+          id="phone"
+          name="phone"
+          type="tel"
+          inputMode="tel"
+          value={phone}
+          disabled={!preview}
+          readOnly={!preview}
+          required={preview}
+          autoComplete="tel-national"
+          placeholder={preview ? "(51) 99999-0000" : undefined}
+          onChange={
+            preview
+              ? (event) => setPhone(maskPhone(event.target.value))
+              : undefined
+          }
+          className={inputClass}
+        />
+      </div>
 
       <div>
         <label htmlFor="document" className="mb-2 block text-sm font-semibold text-stone-700">
@@ -328,7 +343,7 @@ export function CompletionForm({
         </div>
       </div>
 
-      <DocumentPhotoField disabled={preview} onBusyChange={setPhotoBusy} />
+      <DocumentPhotoField onBusyChange={setPhotoBusy} />
 
       <LgpdNotice />
 

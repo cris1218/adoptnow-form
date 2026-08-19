@@ -108,7 +108,7 @@ async function presignAndUpload(blob: Blob, extension: "mp4" | "webm" | "mov") {
   return presign.publicUrl;
 }
 
-export function HomeVideoField() {
+export function HomeVideoField({ disabled = false }: { disabled?: boolean }) {
   const [mode, setMode] = useState<DeviceMode | null>(null);
   const [agreed, setAgreed] = useState(false);
   const [viaWhatsapp, setViaWhatsapp] = useState(false);
@@ -194,6 +194,7 @@ export function HomeVideoField() {
   }
 
   async function startRecording() {
+    if (disabled) return;
     setError("");
     if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === "undefined") {
       setError("Este celular não permite gravar pela página. Use o Safari ou Chrome atualizado.");
@@ -265,8 +266,8 @@ export function HomeVideoField() {
   }
 
   async function onFileSelected(file: File | undefined) {
+    if (disabled || !file) return;
     setError("");
-    if (!file) return;
 
     const extension = extensionFromFile(file);
     if (!extension) {
@@ -322,7 +323,8 @@ export function HomeVideoField() {
           name="agreedHomeSafe"
           value="true"
           checked={agreed}
-          required
+          required={!disabled}
+          disabled={disabled}
           onChange={(event) => {
             const next = event.target.checked;
             setAgreed(next);
@@ -345,6 +347,7 @@ export function HomeVideoField() {
             name="willSendVideoWhatsapp"
             value="true"
             checked={viaWhatsapp}
+            disabled={disabled}
             onChange={(event) => {
               const next = event.target.checked;
               setViaWhatsapp(next);
@@ -404,8 +407,9 @@ export function HomeVideoField() {
               </p>
               <button
                 type="button"
+                disabled={disabled}
                 onClick={() => void startRecording()}
-                className="flex h-14 w-full items-center justify-center rounded-2xl bg-brand-dark text-base font-semibold text-white"
+                className="flex h-14 w-full items-center justify-center rounded-2xl bg-brand-dark text-base font-semibold text-white disabled:opacity-60"
               >
                 Gravar vídeo
               </button>
@@ -417,13 +421,14 @@ export function HomeVideoField() {
               <p className="text-sm text-stone-600">
                 Escolha um arquivo de vídeo do computador. No máximo 1 minuto.
               </p>
-              <label className="flex h-14 w-full cursor-pointer items-center justify-center rounded-2xl bg-brand-dark text-base font-semibold text-white">
+              <label className={`flex h-14 w-full items-center justify-center rounded-2xl bg-brand-dark text-base font-semibold text-white ${disabled ? "pointer-events-none opacity-60" : "cursor-pointer"}`}>
                 Anexar vídeo
                 <input
                   ref={fileRef}
                   type="file"
                   accept="video/mp4,video/webm,video/quicktime,.mp4,.webm,.mov"
                   className="sr-only"
+                  disabled={disabled}
                   onChange={(event) => {
                     void onFileSelected(event.target.files?.[0]);
                   }}
@@ -482,7 +487,7 @@ export function HomeVideoField() {
         type="text"
         name="homeVideoUrl"
         value={videoUrl}
-        required={!viaWhatsapp}
+        required={!disabled && !viaWhatsapp}
         readOnly
         tabIndex={-1}
         aria-hidden="true"

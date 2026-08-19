@@ -23,6 +23,14 @@ export async function savePotentialAdopter(
     };
   }
 
+  const accessToken = String(formData.get("accessToken") ?? "").trim();
+  if (!accessToken) {
+    return {
+      ok: false,
+      message: "Entre em contato com o Recanto do Ron Ron.",
+    };
+  }
+
   const phone = normalizePhone(String(formData.get("phone") ?? ""));
 
   if (!isValidPhone(phone)) {
@@ -36,6 +44,18 @@ export async function savePotentialAdopter(
 
   try {
     const supabase = getSupabaseServer();
+    const { data: access, error: accessError } = await supabase.rpc(
+      "get_adoption_form_access",
+      { p_token: accessToken }
+    );
+
+    if (accessError || !(access as { ok?: boolean } | null)?.ok) {
+      return {
+        ok: false,
+        message: "Entre em contato com o Recanto do Ron Ron.",
+      };
+    }
+
     const availableCats = await listAvailableAdoptionCats(supabase);
     const requestedId = parsed.answers.interestedCatId;
     const selectedCat = requestedId
@@ -77,6 +97,15 @@ export async function savePotentialAdopter(
       };
     }
 
+    const { data: consumed, error: consumeError } = await supabase.rpc(
+      "consume_adoption_form_token",
+      { p_token: accessToken }
+    );
+
+    if (consumeError || !(consumed as { ok?: boolean } | null)?.ok) {
+      console.error("Falha ao invalidar o token do formulário:", consumeError);
+    }
+
     try {
       await notifyStaffPotentialAdopter(
         parsed.answers.fullName,
@@ -97,6 +126,28 @@ export async function savePotentialAdopter(
       ok: false,
       message: "Não foi possível enviar agora. Tente novamente em instantes.",
     };
+  }
+}
+
+export async function getAdoptionFormAccess(token: string): Promise<boolean> {
+  const trimmed = token.trim();
+  if (!trimmed) return false;
+
+  try {
+    const supabase = getSupabaseServer();
+    const { data, error } = await supabase.rpc("get_adoption_form_access", {
+      p_token: trimmed,
+    });
+
+    if (error) {
+      console.error("Falha ao validar o token do formulário:", error);
+      return false;
+    }
+
+    return Boolean((data as { ok?: boolean } | null)?.ok);
+  } catch (error) {
+    console.error("Falha ao validar o token do formulário:", error);
+    return false;
   }
 }
 
