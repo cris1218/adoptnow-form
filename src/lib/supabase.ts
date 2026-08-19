@@ -1,5 +1,7 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 
+import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
+
 export function getSupabaseServer(): SupabaseClient {
   const url = process.env.SUPABASE_URL;
   const key = process.env.SUPABASE_ANON_KEY;
@@ -17,4 +19,8 @@ export function getSupabaseServer(): SupabaseClient {
       detectSessionInUrl: false,
     },
   });
+}
+
+export function getSupabaseForCompletion(): SupabaseClient {
+  return getSupabaseAdmin() ?? getSupabaseServer();
 }

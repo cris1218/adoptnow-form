@@ -1,6 +1,6 @@
 "use server";
 
-import { getSupabaseServer } from "@/lib/supabase";
+import { getSupabaseForCompletion } from "@/lib/supabase";
 import { notifyStaffAdopterCompletion } from "@/lib/notifyStaff";
 import { isValidCep, isValidCpf, onlyDigits } from "@/lib/masks";
 import { isFormDocumentUrl } from "@/lib/questionnaire";
@@ -36,12 +36,24 @@ type RpcResult = {
   state?: string;
 };
 
+function normalizePhoneCipher(value: string): string {
+  let cipher = value.trim().replace(/ /g, "+");
+  if (cipher.includes("%")) {
+    try {
+      cipher = decodeURIComponent(cipher);
+    } catch {
+      // keep the current value
+    }
+  }
+  return cipher.trim();
+}
+
 export async function loadAdopterCompletion(
   token: string,
   phoneCipher: string
 ): Promise<{ ok: true; data: CompletionPrefill } | { ok: false; message: string }> {
   const trimmedToken = token.trim();
-  const trimmedCipher = phoneCipher.trim();
+  const trimmedCipher = normalizePhoneCipher(phoneCipher);
   if (!trimmedToken || !trimmedCipher) {
     return { ok: false, message: "Link inválido. Peça um novo link de cadastro." };
   }
@@ -58,7 +70,7 @@ export async function loadAdopterCompletion(
   }
 
   try {
-    const supabase = getSupabaseServer();
+    const supabase = getSupabaseForCompletion();
     const { data, error } = await supabase.rpc("get_adopter_completion_form", {
       p_token: trimmedToken,
       p_phone_cipher: trimmedCipher,
@@ -108,7 +120,9 @@ export async function submitAdopterCompletion(
   formData: FormData
 ): Promise<CompletionFormState> {
   const token = String(formData.get("token") ?? "").trim();
-  const phoneCipher = String(formData.get("phoneCipher") ?? "").trim();
+  const phoneCipher = normalizePhoneCipher(
+    String(formData.get("phoneCipher") ?? "")
+  );
   const document = onlyDigits(String(formData.get("document") ?? ""));
   const cep = onlyDigits(String(formData.get("cep") ?? ""));
   const street = String(formData.get("street") ?? "").trim();
@@ -141,7 +155,7 @@ export async function submitAdopterCompletion(
   }
 
   try {
-    const supabase = getSupabaseServer();
+    const supabase = getSupabaseForCompletion();
     const { data, error } = await supabase.rpc("submit_adopter_completion", {
       p_token: token,
       p_phone_cipher: phoneCipher,

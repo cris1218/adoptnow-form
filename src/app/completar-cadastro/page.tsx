@@ -19,11 +19,16 @@ export default async function CompletarCadastroPage({
   searchParams: Promise<{ token?: string; p?: string }>;
 }) {
   const { token, p } = await searchParams;
+  const phoneCipher = Array.isArray(p) ? (p[0] ?? "") : (p ?? "");
+  const accessToken = Array.isArray(token) ? (token[0] ?? "") : (token ?? "");
 
   return (
     <SiteShell title="Completar cadastro">
       <section className="rounded-[1.75rem] border border-white/70 bg-white/90 p-6 shadow-[0_18px_50px_rgba(14,90,88,0.12)] backdrop-blur-sm compact:px-3">
-        <CompletionForm token={token?.trim() ?? ""} phoneCipher={p?.trim() ?? ""} />
+        <CompletionForm
+          token={accessToken.trim()}
+          phoneCipher={phoneCipher.trim()}
+        />
       </section>
     </SiteShell>
   );

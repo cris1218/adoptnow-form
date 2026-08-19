@@ -51,25 +51,31 @@ export function CompletionForm({
 
     let cancelled = false;
 
-    void loadAdopterCompletion(token, phoneCipher).then((result) => {
-      if (cancelled) return;
-      if (!result.ok) {
-        setLoadError(result.message);
-        setLoading(false);
-        return;
-      }
+    void loadAdopterCompletion(token, phoneCipher)
+      .then((result) => {
+        if (cancelled) return;
+        if (!result.ok) {
+          setLoadError(result.message);
+          setLoading(false);
+          return;
+        }
 
-      setFullName(result.data.fullName);
-      setPhone(maskPhone(result.data.phone));
-      setDocument(maskCpf(result.data.document));
-      setCep(maskCep(result.data.cep));
-      setStreet(result.data.street);
-      setNeighborhood(result.data.neighborhood);
-      setNumber(result.data.number);
-      setCity(result.data.city);
-      setUf(result.data.state.toUpperCase());
-      setLoading(false);
-    });
+        setFullName(result.data.fullName);
+        setPhone(maskPhone(result.data.phone));
+        setDocument(maskCpf(result.data.document));
+        setCep(maskCep(result.data.cep));
+        setStreet(result.data.street);
+        setNeighborhood(result.data.neighborhood);
+        setNumber(result.data.number);
+        setCity(result.data.city);
+        setUf(result.data.state.toUpperCase());
+        setLoading(false);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setLoadError("Não foi possível abrir este link agora. Tente novamente.");
+        setLoading(false);
+      });
 
     return () => {
       cancelled = true;
