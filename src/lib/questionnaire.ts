@@ -76,6 +76,19 @@ export function isFormVideoUrl(url: string): boolean {
   }
 }
 
+export function isFormDocumentUrl(url: string): boolean {
+  const base = (process.env.R2_PUBLIC_URL ?? DEFAULT_R2_PUBLIC).replace(
+    /\/$/,
+    ""
+  );
+  try {
+    const parsed = new URL(url);
+    return parsed.protocol === "https:" && url.startsWith(`${base}/form-docs/`);
+  } catch {
+    return false;
+  }
+}
+
 export function parseAnswers(
   formData: FormData,
   phone: string

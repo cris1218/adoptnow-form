@@ -3,6 +3,7 @@
 import { getSupabaseServer } from "@/lib/supabase";
 import { notifyStaffAdopterCompletion } from "@/lib/notifyStaff";
 import { isValidCep, isValidCpf, onlyDigits } from "@/lib/masks";
+import { isFormDocumentUrl } from "@/lib/questionnaire";
 
 export type CompletionFormState = {
   ok: boolean;
@@ -10,6 +11,8 @@ export type CompletionFormState = {
 } | null;
 
 export type CompletionPrefill = {
+  fullName: string;
+  phone: string;
   document: string;
   cep: string;
   street: string;
@@ -23,6 +26,7 @@ type RpcResult = {
   ok?: boolean;
   error?: string;
   full_name?: string;
+  phone?: string;
   document?: string;
   cep?: string;
   street?: string;
@@ -40,6 +44,17 @@ export async function loadAdopterCompletion(
   const trimmedCipher = phoneCipher.trim();
   if (!trimmedToken || !trimmedCipher) {
     return { ok: false, message: "Link inválido. Peça um novo link de cadastro." };
+  }
+
+  const looksLikeExample =
+    /^(x+|y+|token|teste|test|example|exemplo)$/i.test(trimmedToken) ||
+    /^(x+|y+|p+|cipher|teste|test|example|exemplo)$/i.test(trimmedCipher);
+  if (looksLikeExample) {
+    return {
+      ok: false,
+      message:
+        "Este é só um exemplo de link. Envie o cadastro pelo app para gerar um token real, ou abra /completar-cadastro/preview para ver o layout.",
+    };
   }
 
   try {
@@ -68,6 +83,8 @@ export async function loadAdopterCompletion(
     return {
       ok: true,
       data: {
+        fullName: result.full_name ?? "",
+        phone: result.phone ?? "",
         document: result.document ?? "",
         cep: result.cep ?? "",
         street: result.street ?? "",
@@ -99,6 +116,7 @@ export async function submitAdopterCompletion(
   const number = String(formData.get("number") ?? "").trim();
   const city = String(formData.get("city") ?? "").trim();
   const state = String(formData.get("state") ?? "").trim().toUpperCase();
+  const documentPhotoUrl = String(formData.get("documentPhotoUrl") ?? "").trim();
 
   if (!token || !phoneCipher) {
     return { ok: false, message: "Link inválido. Peça um novo link de cadastro." };
@@ -118,6 +136,9 @@ export async function submitAdopterCompletion(
   ) {
     return { ok: false, message: "Preencha o endereço completo." };
   }
+  if (documentPhotoUrl && !isFormDocumentUrl(documentPhotoUrl)) {
+    return { ok: false, message: "A foto do documento é inválida. Envie novamente." };
+  }
 
   try {
     const supabase = getSupabaseServer();
@@ -131,6 +152,7 @@ export async function submitAdopterCompletion(
       p_number: number,
       p_city: city,
       p_state: state,
+      p_document_photo_url: documentPhotoUrl,
     });
 
     if (error) {

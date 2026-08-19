@@ -8,9 +8,10 @@ import {
   type CompletionFormState,
 } from "@/app/completar-cadastro/actions";
 import { LgpdNotice } from "@/components/LgpdNotice";
+import { DocumentPhotoField } from "@/components/DocumentPhotoField";
 import { PawMark } from "@/components/PawMark";
 import { fetchAddressByCep } from "@/lib/cep";
-import { maskCep, maskCpf, onlyDigits } from "@/lib/masks";
+import { maskCep, maskCpf, maskPhone, onlyDigits } from "@/lib/masks";
 
 const initialState: CompletionFormState = null;
 
@@ -32,6 +33,8 @@ export function CompletionForm({
   );
   const [loading, setLoading] = useState(!preview);
   const [loadError, setLoadError] = useState("");
+  const [fullName, setFullName] = useState("");
+  const [phone, setPhone] = useState("");
   const [document, setDocument] = useState("");
   const [cep, setCep] = useState("");
   const [street, setStreet] = useState("");
@@ -40,6 +43,7 @@ export function CompletionForm({
   const [city, setCity] = useState("");
   const [uf, setUf] = useState("");
   const [cepHint, setCepHint] = useState("");
+  const [photoBusy, setPhotoBusy] = useState(false);
   const numberInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -55,6 +59,8 @@ export function CompletionForm({
         return;
       }
 
+      setFullName(result.data.fullName);
+      setPhone(maskPhone(result.data.phone));
       setDocument(maskCpf(result.data.document));
       setCep(maskCep(result.data.cep));
       setStreet(result.data.street);
@@ -178,6 +184,38 @@ export function CompletionForm({
         </p>
       </div>
 
+      {!preview ? (
+        <>
+          <div>
+            <label htmlFor="fullName" className="mb-2 block text-sm font-semibold text-stone-700">
+              Nome completo
+            </label>
+            <input
+              id="fullName"
+              name="fullName"
+              value={fullName}
+              disabled
+              readOnly
+              className={inputClass}
+            />
+          </div>
+
+          <div>
+            <label htmlFor="phone" className="mb-2 block text-sm font-semibold text-stone-700">
+              Telefone
+            </label>
+            <input
+              id="phone"
+              name="phone"
+              value={phone}
+              disabled
+              readOnly
+              className={inputClass}
+            />
+          </div>
+        </>
+      ) : null}
+
       <div>
         <label htmlFor="document" className="mb-2 block text-sm font-semibold text-stone-700">
           CPF
@@ -290,6 +328,8 @@ export function CompletionForm({
         </div>
       </div>
 
+      <DocumentPhotoField disabled={preview} onBusyChange={setPhotoBusy} />
+
       <LgpdNotice />
 
       <label className="flex gap-3 rounded-2xl border border-stone-300 bg-white p-4 compact:px-2">
@@ -318,10 +358,16 @@ export function CompletionForm({
       <div className="sticky bottom-0 -mx-6 mt-1 border-t border-stone-200 bg-white/95 px-6 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] backdrop-blur-sm compact:-mx-3 compact:px-3">
         <button
           type="submit"
-          disabled={preview || pending}
+          disabled={preview || pending || photoBusy}
           className="flex h-14 w-full items-center justify-center rounded-2xl bg-brand-dark text-lg font-semibold text-white shadow-sm transition active:scale-[0.99] enabled:hover:bg-brand-950 disabled:opacity-60"
         >
-          {preview ? "Envio desativado" : pending ? "Enviando..." : "Enviar dados"}
+          {preview
+            ? "Envio desativado"
+            : pending
+              ? "Enviando..."
+              : photoBusy
+                ? "Enviando foto..."
+                : "Enviar dados"}
         </button>
       </div>
     </form>
