@@ -9,6 +9,7 @@ import {
 } from "@/app/actions";
 import { ChoiceGroup, Question, RequiredValue, ToggleChip } from "@/components/FormFields";
 import { HomeVideoField } from "@/components/HomeVideoField";
+import { LgpdNotice } from "@/components/LgpdNotice";
 import { PawMark } from "@/components/PawMark";
 import { SelectedCatPreview } from "@/components/SelectedCatPreview";
 import {
@@ -491,6 +492,22 @@ export function AdoptionLeadForm() {
         <span className="text-sm leading-relaxed text-stone-700">
           Estou ciente de que, na hora da adoção, vou assinar um termo de
           responsabilidade.
+        </span>
+      </label>
+
+      <LgpdNotice />
+
+      <label className="flex gap-3 rounded-2xl border border-stone-300 bg-white p-4 compact:px-2">
+        <input
+          type="checkbox"
+          name="agreedToLgpd"
+          value="true"
+          required
+          className="mt-1 h-5 w-5 shrink-0 accent-[#148B87]"
+        />
+        <span className="text-sm leading-relaxed text-stone-700">
+          Autorizo o Recanto do Ron Ron a armazenar e usar meus dados pessoais
+          somente para o processo de adoção, conforme a LGPD.
         </span>
       </label>
 
