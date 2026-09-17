@@ -1,8 +1,9 @@
 "use client";
 
-import { useActionState, useEffect, useState } from "react";
+import { useActionState, useEffect, useRef, useState } from "react";
 
 import {
+  checkPotentialAdopterPhone,
   loadAvailableAdoptionCats,
   savePotentialAdopter,
   type FormState,
@@ -17,7 +18,7 @@ import {
   formatCatSex,
   type AvailableAdoptionCat,
 } from "@/lib/availableCats";
-import { maskPhone } from "@/lib/masks";
+import { isValidPhone, maskPhone, normalizePhone } from "@/lib/masks";
 import {
   INTERESTED_CAT_OTHER,
   type HomeType,
@@ -43,6 +44,9 @@ export function AdoptionLeadForm({
     initialState
   );
   const [phone, setPhone] = useState("");
+  const [phoneError, setPhoneError] = useState<string | null>(null);
+  const [checkingPhone, setCheckingPhone] = useState(false);
+  const phoneCheckSeq = useRef(0);
   const [availableCats, setAvailableCats] = useState<AvailableAdoptionCat[]>(
     []
   );
@@ -79,8 +83,34 @@ export function AdoptionLeadForm({
     };
   }, []);
 
+  async function validatePhone(rawPhone: string) {
+    const normalized = normalizePhone(rawPhone);
+    if (!isValidPhone(normalized)) {
+      setPhoneError(null);
+      return;
+    }
+
+    if (preview) {
+      setPhoneError(null);
+      return;
+    }
+
+    const seq = ++phoneCheckSeq.current;
+    setCheckingPhone(true);
+    try {
+      const result = await checkPotentialAdopterPhone(normalized);
+      if (seq !== phoneCheckSeq.current) return;
+      setPhoneError(result.exists ? (result.message ?? null) : null);
+    } finally {
+      if (seq === phoneCheckSeq.current) {
+        setCheckingPhone(false);
+      }
+    }
+  }
+
   const hadAnimals = hadCats || hadDogs;
   const selectedCat = availableCats.find((cat) => cat.id === interestedCatId);
+  const phoneBlocked = Boolean(phoneError);
 
   function selectNeverHad(next: boolean) {
     setNeverHadAnimals(next);
@@ -141,7 +171,11 @@ export function AdoptionLeadForm({
           ? (event) => {
               event.preventDefault();
             }
-          : undefined
+          : (event) => {
+              if (phoneBlocked || checkingPhone) {
+                event.preventDefault();
+              }
+            }
       }
       onInvalid={(event) => {
         const field = event.target as HTMLElement;
@@ -207,9 +241,30 @@ export function AdoptionLeadForm({
           autoComplete="tel-national"
           placeholder="(51) 99999-0000"
           value={phone}
-          onChange={(event) => setPhone(maskPhone(event.target.value))}
-          className="h-14 w-full rounded-2xl border border-stone-300 bg-white px-4 text-base text-stone-900 outline-none ring-brand-light placeholder:text-stone-400 focus:border-brand-light focus:ring-2"
+          aria-invalid={phoneBlocked || undefined}
+          aria-describedby={phoneBlocked ? "phone-error" : undefined}
+          onChange={(event) => {
+            setPhone(maskPhone(event.target.value));
+            setPhoneError(null);
+          }}
+          onBlur={() => {
+            void validatePhone(phone);
+          }}
+          className={`h-14 w-full rounded-2xl border bg-white px-4 text-base text-stone-900 outline-none ring-brand-light placeholder:text-stone-400 focus:ring-2 ${
+            phoneBlocked
+              ? "border-rose-400 focus:border-rose-500 focus:ring-rose-200"
+              : "border-stone-300 focus:border-brand-light"
+          }`}
         />
+        {phoneError ? (
+          <p
+            id="phone-error"
+            role="alert"
+            className="mt-2 rounded-xl bg-amber-50 px-3 py-2 text-sm font-medium leading-relaxed text-amber-950"
+          >
+            {phoneError}
+          </p>
+        ) : null}
       </div>
 
       <div>
@@ -533,16 +588,18 @@ export function AdoptionLeadForm({
       <div className="sticky bottom-0 -mx-6 mt-1 border-t border-stone-200 bg-white/95 px-6 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] backdrop-blur-sm compact:-mx-3 compact:px-3">
         <button
           type="submit"
-          disabled={preview || pending || loadingCats}
+          disabled={preview || pending || loadingCats || phoneBlocked || checkingPhone}
           className="flex h-14 w-full items-center justify-center rounded-2xl bg-brand-dark text-lg font-semibold text-white shadow-sm transition active:scale-[0.99] enabled:hover:bg-brand-950 disabled:opacity-60"
         >
           {preview
             ? "Envio desativado"
             : pending
               ? "Enviando..."
-              : loadingCats
-                ? "Carregando..."
-                : "Enviar questionário"}
+              : checkingPhone
+                ? "Validando WhatsApp..."
+                : loadingCats
+                  ? "Carregando..."
+                  : "Enviar questionário"}
         </button>
       </div>
     </form>

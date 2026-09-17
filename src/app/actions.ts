@@ -11,6 +11,53 @@ export type FormState = {
   message: string;
 } | null;
 
+const PHONE_PENDING_MESSAGE =
+  "Este WhatsApp já possui cadastro como interessado. Aguarde a avaliação da equipe do Recanto do Ron Ron.";
+
+const PHONE_APPROVED_MESSAGE =
+  "Este WhatsApp já foi aprovado. Aguarde que entraremos em contato.";
+
+const PHONE_DENIED_MESSAGE =
+  "Já existe um cadastro de interesse com este WhatsApp. Estamos avaliando e entraremos em contato.";
+
+export async function checkPotentialAdopterPhone(
+  rawPhone: string
+): Promise<{ exists: boolean; message?: string }> {
+  const phone = normalizePhone(rawPhone);
+  if (!isValidPhone(phone)) {
+    return { exists: false };
+  }
+
+  try {
+    const supabase = getSupabaseServer();
+    const { data, error } = await supabase.rpc(
+      "get_potential_adopter_phone_status",
+      { p_phone: phone }
+    );
+
+    if (error) {
+      console.error("Falha ao validar telefone do interessado:", error);
+      return { exists: false };
+    }
+
+    const status = typeof data === "string" ? data.trim() : "";
+    if (status === "aprovado") {
+      return { exists: true, message: PHONE_APPROVED_MESSAGE };
+    }
+    if (status === "pendente") {
+      return { exists: true, message: PHONE_PENDING_MESSAGE };
+    }
+    if (status === "negado") {
+      return { exists: true, message: PHONE_DENIED_MESSAGE };
+    }
+
+    return { exists: false };
+  } catch (error) {
+    console.error("Falha ao validar telefone do interessado:", error);
+    return { exists: false };
+  }
+}
+
 export async function savePotentialAdopter(
   _prev: FormState,
   formData: FormData
@@ -35,6 +82,14 @@ export async function savePotentialAdopter(
 
   if (!isValidPhone(phone)) {
     return { ok: false, message: "Informe um telefone válido com DDD." };
+  }
+
+  const phoneCheck = await checkPotentialAdopterPhone(phone);
+  if (phoneCheck.exists) {
+    return {
+      ok: false,
+      message: phoneCheck.message ?? PHONE_PENDING_MESSAGE,
+    };
   }
 
   const parsed = parseAnswers(formData, phone);
