@@ -70,6 +70,24 @@ async function notifyStaff(message: StaffPushMessage): Promise<void> {
   }
 }
 
+export async function notifyStaffExclusiveCatInterest(
+  fullName: string,
+  catName: string
+): Promise<void> {
+  const person = fullName.trim() || "Alguém";
+  const cat = catName.trim() || "gato exclusivo";
+
+  await notifyStaff({
+    title: "Gato exclusivo",
+    body: `${person} tem interesse em adotar o/a ${cat}!`,
+    data: {
+      type: "exclusive-cat-interest",
+      fullName: person,
+      interestedCatName: cat,
+    },
+  });
+}
+
 export async function notifyStaffPotentialAdopter(
   fullName: string,
   interestedCatName = ""

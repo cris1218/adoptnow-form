@@ -35,9 +35,13 @@ const yesNo = [
 export function AdoptionLeadForm({
   token,
   preview = false,
+  exclusive = false,
+  lockedCat = null,
 }: {
   token: string;
   preview?: boolean;
+  exclusive?: boolean;
+  lockedCat?: AvailableAdoptionCat | null;
 }) {
   const [state, action, pending] = useActionState(
     savePotentialAdopter,
@@ -48,10 +52,10 @@ export function AdoptionLeadForm({
   const [checkingPhone, setCheckingPhone] = useState(false);
   const phoneCheckSeq = useRef(0);
   const [availableCats, setAvailableCats] = useState<AvailableAdoptionCat[]>(
-    []
+    lockedCat ? [lockedCat] : []
   );
-  const [loadingCats, setLoadingCats] = useState(true);
-  const [interestedCatId, setInterestedCatId] = useState("");
+  const [loadingCats, setLoadingCats] = useState(!lockedCat);
+  const [interestedCatId, setInterestedCatId] = useState(lockedCat?.id ?? "");
   const [otherCatName, setOtherCatName] = useState("");
   const [neverHadAnimals, setNeverHadAnimals] = useState(false);
   const [hadCats, setHadCats] = useState(false);
@@ -68,6 +72,8 @@ export function AdoptionLeadForm({
   const [sexPreference, setSexPreference] = useState<SexPreference | "">("");
 
   useEffect(() => {
+    if (lockedCat) return;
+
     let cancelled = false;
 
     void loadAvailableAdoptionCats()
@@ -81,7 +87,7 @@ export function AdoptionLeadForm({
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [lockedCat]);
 
   async function validatePhone(rawPhone: string) {
     const normalized = normalizePhone(rawPhone);
@@ -98,7 +104,10 @@ export function AdoptionLeadForm({
     const seq = ++phoneCheckSeq.current;
     setCheckingPhone(true);
     try {
-      const result = await checkPotentialAdopterPhone(normalized);
+      const result = await checkPotentialAdopterPhone(
+        normalized,
+        lockedCat?.id
+      );
       if (seq !== phoneCheckSeq.current) return;
       setPhoneError(result.exists ? (result.message ?? null) : null);
     } finally {
@@ -191,6 +200,12 @@ export function AdoptionLeadForm({
       ) : null}
 
       <input type="hidden" name="accessToken" value={token} />
+      <input
+        type="hidden"
+        name="accessKind"
+        value={exclusive ? "exclusive" : "phone"}
+      />
+      <input type="hidden" name="exclusiveCatId" value={lockedCat?.id ?? ""} />
       <label className="sr-only" htmlFor="company">
         Empresa
       </label>
@@ -274,6 +289,19 @@ export function AdoptionLeadForm({
         >
           Qual gatinho tem interesse?
         </label>
+        {lockedCat ? (
+          <input
+            id="interestedCatId"
+            type="hidden"
+            name="interestedCatId"
+            value={lockedCat.id}
+          />
+        ) : null}
+        {lockedCat ? (
+          <p className="flex h-14 items-center rounded-2xl border border-stone-300 bg-stone-50 px-4 text-base font-semibold text-stone-900">
+            {lockedCat.name}
+          </p>
+        ) : (
         <SearchableSelect
           id="interestedCatId"
           name="interestedCatId"
@@ -302,6 +330,7 @@ export function AdoptionLeadForm({
             description: "Não está na lista",
           }}
         />
+        )}
         {interestedCatId === INTERESTED_CAT_OTHER ? (
           <input
             id="interestedCatOtherName"

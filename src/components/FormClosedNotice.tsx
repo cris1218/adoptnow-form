@@ -4,7 +4,11 @@ import { maskPhone } from "@/lib/masks";
 const CONTACT_WHATSAPP = "42999007638";
 const CONTACT_WHATSAPP_LINK = `https://wa.me/55${CONTACT_WHATSAPP}`;
 
-export function FormClosedNotice() {
+export function FormClosedNotice({
+  message = "Entre em contato com o Recanto do Ron Ron pelo WhatsApp.",
+}: {
+  message?: string;
+}) {
   return (
     <section className="rounded-[1.75rem] border border-white/70 bg-white/90 p-6 shadow-[0_18px_50px_rgba(14,90,88,0.12)] backdrop-blur-sm compact:px-3">
       <div className="flex flex-col items-center px-2 py-8 text-center">
@@ -15,7 +19,7 @@ export function FormClosedNotice() {
           Formulário indisponível
         </h2>
         <p className="mt-3 max-w-sm text-base leading-relaxed text-stone-600">
-          Entre em contato com o Recanto do Ron Ron pelo WhatsApp.
+          {message}
         </p>
         <a
           href={CONTACT_WHATSAPP_LINK}

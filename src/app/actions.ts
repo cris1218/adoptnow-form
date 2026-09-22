@@ -1,9 +1,15 @@
 "use server";
 
-import { listAvailableAdoptionCats } from "@/lib/availableCats";
+import {
+  listAvailableAdoptionCats,
+  type AvailableAdoptionCat,
+} from "@/lib/availableCats";
 import { getSupabaseServer } from "@/lib/supabase";
 import { isValidPhone, normalizePhone } from "@/lib/masks";
-import { notifyStaffPotentialAdopter } from "@/lib/notifyStaff";
+import {
+  notifyStaffExclusiveCatInterest,
+  notifyStaffPotentialAdopter,
+} from "@/lib/notifyStaff";
 import { parseAnswers, toInsertRow } from "@/lib/questionnaire";
 
 export type FormState = {
@@ -21,7 +27,8 @@ const PHONE_DENIED_MESSAGE =
   "Já existe um cadastro de interesse com este WhatsApp. Estamos avaliando e entraremos em contato.";
 
 export async function checkPotentialAdopterPhone(
-  rawPhone: string
+  rawPhone: string,
+  catId?: string
 ): Promise<{ exists: boolean; message?: string }> {
   const phone = normalizePhone(rawPhone);
   if (!isValidPhone(phone)) {
@@ -32,7 +39,10 @@ export async function checkPotentialAdopterPhone(
     const supabase = getSupabaseServer();
     const { data, error } = await supabase.rpc(
       "get_potential_adopter_phone_status",
-      { p_phone: phone }
+      {
+        p_phone: phone,
+        ...(catId ? { p_cat_id: catId } : {}),
+      }
     );
 
     if (error) {
@@ -71,6 +81,8 @@ export async function savePotentialAdopter(
   }
 
   const accessToken = String(formData.get("accessToken") ?? "").trim();
+  const accessKind = String(formData.get("accessKind") ?? "phone");
+  const exclusive = accessKind === "exclusive";
   if (!accessToken) {
     return {
       ok: false,
@@ -84,7 +96,11 @@ export async function savePotentialAdopter(
     return { ok: false, message: "Informe um telefone válido com DDD." };
   }
 
-  const phoneCheck = await checkPotentialAdopterPhone(phone);
+  const lockedCatId = String(formData.get("exclusiveCatId") ?? "").trim();
+  const phoneCheck = await checkPotentialAdopterPhone(
+    phone,
+    exclusive ? lockedCatId : undefined
+  );
   if (phoneCheck.exists) {
     return {
       ok: false,
@@ -99,25 +115,40 @@ export async function savePotentialAdopter(
 
   try {
     const supabase = getSupabaseServer();
-    const { data: access, error: accessError } = await supabase.rpc(
-      "get_adoption_form_access",
-      { p_token: accessToken }
-    );
+    let exclusiveCat: AvailableAdoptionCat | null = null;
 
-    if (accessError || !(access as { ok?: boolean } | null)?.ok) {
-      return {
-        ok: false,
-        message: "Entre em contato com o Recanto do Ron Ron.",
-      };
+    if (exclusive) {
+      const exclusiveAccess = await getExclusiveCatForm(accessToken);
+      if (!exclusiveAccess.ok || !exclusiveAccess.cat) {
+        return {
+          ok: false,
+          message: exclusiveAccess.message,
+        };
+      }
+      exclusiveCat = exclusiveAccess.cat;
+    } else {
+      const { data: access, error: accessError } = await supabase.rpc(
+        "get_adoption_form_access",
+        { p_token: accessToken }
+      );
+
+      if (accessError || !(access as { ok?: boolean } | null)?.ok) {
+        return {
+          ok: false,
+          message: "Entre em contato com o Recanto do Ron Ron.",
+        };
+      }
     }
 
-    const availableCats = await listAvailableAdoptionCats(supabase);
-    const requestedId = parsed.answers.interestedCatId;
+    const availableCats = exclusiveCat
+      ? [exclusiveCat]
+      : await listAvailableAdoptionCats(supabase);
+    const requestedId = exclusiveCat?.id ?? parsed.answers.interestedCatId;
     const selectedCat = requestedId
       ? availableCats.find((cat) => cat.id === requestedId)
       : undefined;
 
-    if (parsed.answers.interestedCatOther) {
+    if (!exclusive && parsed.answers.interestedCatOther) {
       if (parsed.answers.interestedCatName.length < 2) {
         return { ok: false, message: "Informe o nome do gatinho." };
       }
@@ -132,12 +163,17 @@ export async function savePotentialAdopter(
 
     const answers = {
       ...parsed.answers,
-      interestedCatId: parsed.answers.interestedCatOther
-        ? null
-        : selectedCat?.id ?? null,
-      interestedCatName: parsed.answers.interestedCatOther
-        ? parsed.answers.interestedCatName
-        : selectedCat?.name ?? parsed.answers.interestedCatName,
+      interestedCatId: exclusiveCat
+        ? exclusiveCat.id
+        : parsed.answers.interestedCatOther
+          ? null
+          : selectedCat?.id ?? null,
+      interestedCatName: exclusiveCat
+        ? exclusiveCat.name
+        : parsed.answers.interestedCatOther
+          ? parsed.answers.interestedCatName
+          : selectedCat?.name ?? parsed.answers.interestedCatName,
+      interestedCatOther: exclusiveCat ? false : parsed.answers.interestedCatOther,
     };
 
     const { error } = await supabase
@@ -152,20 +188,29 @@ export async function savePotentialAdopter(
       };
     }
 
-    const { data: consumed, error: consumeError } = await supabase.rpc(
-      "consume_adoption_form_token",
-      { p_token: accessToken }
-    );
+    if (!exclusive) {
+      const { data: consumed, error: consumeError } = await supabase.rpc(
+        "consume_adoption_form_token",
+        { p_token: accessToken }
+      );
 
-    if (consumeError || !(consumed as { ok?: boolean } | null)?.ok) {
-      console.error("Falha ao invalidar o token do formulário:", consumeError);
+      if (consumeError || !(consumed as { ok?: boolean } | null)?.ok) {
+        console.error("Falha ao invalidar o token do formulário:", consumeError);
+      }
     }
 
     try {
-      await notifyStaffPotentialAdopter(
-        parsed.answers.fullName,
-        answers.interestedCatName
-      );
+      if (exclusive) {
+        await notifyStaffExclusiveCatInterest(
+          parsed.answers.fullName,
+          answers.interestedCatName
+        );
+      } else {
+        await notifyStaffPotentialAdopter(
+          parsed.answers.fullName,
+          answers.interestedCatName
+        );
+      }
     } catch (pushError) {
       console.error("Falha ao notificar a equipe:", pushError);
     }
@@ -180,6 +225,99 @@ export async function savePotentialAdopter(
     return {
       ok: false,
       message: "Não foi possível enviar agora. Tente novamente em instantes.",
+    };
+  }
+}
+
+type ExclusiveCatFormPayload = {
+  ok?: boolean;
+  reason?: string;
+  message?: string;
+  cat?: {
+    id?: string;
+    name?: string;
+    sex?: string;
+    fur_color?: string;
+    birth_date_approx?: string | null;
+    photo_url?: string | null;
+    quarantine_released_at?: string | null;
+    fiv?: string;
+    felv?: string;
+  } | null;
+};
+
+function exclusiveClosedMessage(payload: ExclusiveCatFormPayload | null): string {
+  if (payload?.message?.trim()) return payload.message.trim();
+  if (payload?.reason === "full") {
+    return "As vagas para este gato já foram preenchidas.";
+  }
+  if (payload?.reason === "ended") return "Este formulário já encerrou.";
+  if (payload?.reason === "not_started") {
+    return "Este formulário ainda não está aberto.";
+  }
+  return "Entre em contato com o Recanto do Ron Ron pelo WhatsApp.";
+}
+
+export async function getExclusiveCatForm(token: string): Promise<{
+  ok: boolean;
+  message: string;
+  cat: AvailableAdoptionCat | null;
+}> {
+  const trimmed = token.trim();
+  if (!trimmed) {
+    return {
+      ok: false,
+      message: "Entre em contato com o Recanto do Ron Ron pelo WhatsApp.",
+      cat: null,
+    };
+  }
+
+  try {
+    const supabase = getSupabaseServer();
+    const { data, error } = await supabase.rpc("get_exclusive_cat_form", {
+      p_token: trimmed,
+    });
+
+    if (error) {
+      console.error("Falha ao validar o formulário exclusivo:", error);
+      return {
+        ok: false,
+        message: "Entre em contato com o Recanto do Ron Ron pelo WhatsApp.",
+        cat: null,
+      };
+    }
+
+    const payload = (data ?? null) as ExclusiveCatFormPayload | null;
+    const cat = payload?.cat;
+    if (!payload?.ok || !cat?.id || !cat.name?.trim()) {
+      return {
+        ok: false,
+        message: exclusiveClosedMessage(payload),
+        cat: null,
+      };
+    }
+
+    return {
+      ok: true,
+      message: "",
+      cat: {
+        id: cat.id,
+        name: cat.name.trim(),
+        sex: cat.sex ?? "",
+        furColor: (cat.fur_color ?? "").trim(),
+        birthDateApprox: cat.birth_date_approx ?? null,
+        photoUrl: (cat.photo_url ?? "").trim(),
+        quarantineReleasedAt: cat.quarantine_released_at ?? null,
+        fiv: (cat.fiv ?? "").trim(),
+        felv: (cat.felv ?? "").trim(),
+      },
+    };
+  } catch (error) {
+    console.error("Falha ao validar o formulário exclusivo:", error);
+    return {
+      ok: false,
+      message: "Entre em contato com o Recanto do Ron Ron pelo WhatsApp.",
+      cat: null,
     };
   }
 }
