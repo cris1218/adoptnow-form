@@ -24,7 +24,7 @@ export default async function Home({
             lockedCat={access.cat}
           />
         ) : (
-          <FormClosedNotice message={access.message} />
+          <FormClosedNotice title={access.title} message={access.message} />
         )}
       </SiteShell>
     );

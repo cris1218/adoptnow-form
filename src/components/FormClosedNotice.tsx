@@ -5,8 +5,10 @@ const CONTACT_WHATSAPP = "42999007638";
 const CONTACT_WHATSAPP_LINK = `https://wa.me/55${CONTACT_WHATSAPP}`;
 
 export function FormClosedNotice({
+  title = "Formulário indisponível",
   message = "Entre em contato com o Recanto do Ron Ron pelo WhatsApp.",
 }: {
+  title?: string;
   message?: string;
 }) {
   return (
@@ -16,7 +18,7 @@ export function FormClosedNotice({
           <PawMark className="h-8 w-8" />
         </div>
         <h2 className="mt-5 text-2xl font-bold tracking-tight text-stone-900">
-          Formulário indisponível
+          {title}
         </h2>
         <p className="mt-3 max-w-sm text-base leading-relaxed text-stone-600">
           {message}

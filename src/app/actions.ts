@@ -246,20 +246,42 @@ type ExclusiveCatFormPayload = {
   } | null;
 };
 
-function exclusiveClosedMessage(payload: ExclusiveCatFormPayload | null): string {
-  if (payload?.message?.trim()) return payload.message.trim();
-  if (payload?.reason === "full") {
-    return "As vagas para este gato já foram preenchidas.";
-  }
-  if (payload?.reason === "ended") return "Este formulário já encerrou.";
+const EXCLUSIVE_NOT_STARTED_MESSAGE =
+  "Este formulário ainda não está aberto. Aguarde a data de início ou entre em contato com o Recanto do Ron Ron.";
+
+const EXCLUSIVE_GENERIC_CLOSED_MESSAGE =
+  "Entre em contato com o Recanto do Ron Ron pelo WhatsApp.";
+
+function exclusiveFoundHomeMessage(catName: string): string {
+  return `${catName} não está mais para adoção. Já encontrou um lar. Aguarde a próxima lista ou entre em contato com o Recanto do Ron Ron.`;
+}
+
+function exclusiveClosedNotice(payload: ExclusiveCatFormPayload | null): {
+  title: string;
+  message: string;
+} {
+  const catName = payload?.cat?.name?.trim() ?? "";
   if (payload?.reason === "not_started") {
-    return "Este formulário ainda não está aberto.";
+    return {
+      title: catName || "Formulário indisponível",
+      message: EXCLUSIVE_NOT_STARTED_MESSAGE,
+    };
   }
-  return "Entre em contato com o Recanto do Ron Ron pelo WhatsApp.";
+  if (catName) {
+    return {
+      title: catName,
+      message: exclusiveFoundHomeMessage(catName),
+    };
+  }
+  return {
+    title: "Formulário indisponível",
+    message: EXCLUSIVE_GENERIC_CLOSED_MESSAGE,
+  };
 }
 
 export async function getExclusiveCatForm(token: string): Promise<{
   ok: boolean;
+  title: string;
   message: string;
   cat: AvailableAdoptionCat | null;
 }> {
@@ -267,7 +289,8 @@ export async function getExclusiveCatForm(token: string): Promise<{
   if (!trimmed) {
     return {
       ok: false,
-      message: "Entre em contato com o Recanto do Ron Ron pelo WhatsApp.",
+      title: "Formulário indisponível",
+      message: EXCLUSIVE_GENERIC_CLOSED_MESSAGE,
       cat: null,
     };
   }
@@ -282,7 +305,8 @@ export async function getExclusiveCatForm(token: string): Promise<{
       console.error("Falha ao validar o formulário exclusivo:", error);
       return {
         ok: false,
-        message: "Entre em contato com o Recanto do Ron Ron pelo WhatsApp.",
+        title: "Formulário indisponível",
+        message: EXCLUSIVE_GENERIC_CLOSED_MESSAGE,
         cat: null,
       };
     }
@@ -290,15 +314,18 @@ export async function getExclusiveCatForm(token: string): Promise<{
     const payload = (data ?? null) as ExclusiveCatFormPayload | null;
     const cat = payload?.cat;
     if (!payload?.ok || !cat?.id || !cat.name?.trim()) {
+      const closed = exclusiveClosedNotice(payload);
       return {
         ok: false,
-        message: exclusiveClosedMessage(payload),
+        title: closed.title,
+        message: closed.message,
         cat: null,
       };
     }
 
     return {
       ok: true,
+      title: "",
       message: "",
       cat: {
         id: cat.id,
@@ -316,7 +343,8 @@ export async function getExclusiveCatForm(token: string): Promise<{
     console.error("Falha ao validar o formulário exclusivo:", error);
     return {
       ok: false,
-      message: "Entre em contato com o Recanto do Ron Ron pelo WhatsApp.",
+      title: "Formulário indisponível",
+      message: EXCLUSIVE_GENERIC_CLOSED_MESSAGE,
       cat: null,
     };
   }
