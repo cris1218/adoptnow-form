@@ -4,6 +4,10 @@ import {
   listAvailableAdoptionCats,
   type AvailableAdoptionCat,
 } from "@/lib/availableCats";
+import {
+  checkIdentityDocument,
+  type DocumentCheckStatus,
+} from "@/lib/documentCheck";
 import { getSupabaseServer } from "@/lib/supabase";
 import { isValidPhone, normalizePhone } from "@/lib/masks";
 import {
@@ -66,6 +70,21 @@ export async function checkPotentialAdopterPhone(
     console.error("Falha ao validar telefone do interessado:", error);
     return { exists: false };
   }
+}
+
+export async function verifyLeadDocumentPhoto(
+  accessToken: string,
+  accessKind: string,
+  documentPhotoUrl: string
+): Promise<DocumentCheckStatus> {
+  const allowed =
+    accessKind === "exclusive"
+      ? (await getExclusiveCatForm(accessToken)).ok
+      : await getAdoptionFormAccess(accessToken);
+  if (!allowed) return "nao_verificado";
+
+  const result = await checkIdentityDocument(documentPhotoUrl.trim());
+  return result.status;
 }
 
 export async function savePotentialAdopter(
@@ -173,9 +192,11 @@ export async function savePotentialAdopter(
       interestedCatOther: exclusiveCat ? false : parsed.answers.interestedCatOther,
     };
 
+    const documentCheck = await checkIdentityDocument(answers.documentPhotoUrl);
+
     const { error } = await supabase
       .from("potential_adopters")
-      .insert(toInsertRow(answers));
+      .insert(toInsertRow(answers, documentCheck));
 
     if (error) {
       console.error("Erro ao salvar possível adotante:", error);
@@ -200,12 +221,14 @@ export async function savePotentialAdopter(
       if (exclusive) {
         await notifyStaffExclusiveCatInterest(
           parsed.answers.fullName,
-          answers.interestedCatName
+          answers.interestedCatName,
+          documentCheck.status
         );
       } else {
         await notifyStaffPotentialAdopter(
           parsed.answers.fullName,
-          answers.interestedCatName
+          answers.interestedCatName,
+          documentCheck.status
         );
       }
     } catch (pushError) {

@@ -1,3 +1,7 @@
+import {
+  parseIdentityAddress,
+  type IdentityAddress,
+} from "@/lib/identityAddress";
 import { catNameError, fullNameError, normalizeFullName } from "@/lib/masks";
 
 export type HomeType = "casa" | "apartamento";
@@ -31,6 +35,8 @@ export type AdoptionAnswers = {
   agreedHomeSafe: boolean;
   willSendVideoWhatsapp: boolean;
   homeVideoUrl: string;
+  identity: IdentityAddress;
+  documentPhotoUrl: string;
 };
 
 export function parseYesNo(value: FormDataEntryValue | null): boolean | null {
@@ -91,6 +97,14 @@ export function isFormDocumentUrl(url: string): boolean {
   }
 }
 
+export function documentPhotoError(url: string): string {
+  if (!url) return "Envie a foto do documento com foto.";
+  if (!isFormDocumentUrl(url)) {
+    return "A foto do documento é inválida. Envie novamente.";
+  }
+  return "";
+}
+
 export function parseAnswers(
   formData: FormData,
   phone: string
@@ -134,6 +148,18 @@ export function parseAnswers(
   const nameError = fullNameError(fullName);
   if (nameError) {
     return { error: nameError };
+  }
+
+  const { values: identity, error: identityError } =
+    parseIdentityAddress(formData);
+  if (identityError) {
+    return { error: identityError };
+  }
+
+  const documentPhotoUrl = String(formData.get("documentPhotoUrl") ?? "").trim();
+  const photoError = documentPhotoError(documentPhotoUrl);
+  if (photoError) {
+    return { error: photoError };
   }
 
   if (!interestedCatIdRaw) {
@@ -250,14 +276,29 @@ export function parseAnswers(
       agreedHomeSafe,
       willSendVideoWhatsapp,
       homeVideoUrl: willSendVideoWhatsapp ? "" : homeVideoUrl,
+      identity,
+      documentPhotoUrl,
     },
   };
 }
 
-export function toInsertRow(answers: AdoptionAnswers) {
+export function toInsertRow(
+  answers: AdoptionAnswers,
+  documentCheck: { status: string; reason: string }
+) {
   return {
     full_name: answers.fullName,
     phone: answers.phone,
+    document: answers.identity.document,
+    address_cep: answers.identity.cep,
+    address_street: answers.identity.street,
+    address_neighborhood: answers.identity.neighborhood,
+    address_number: answers.identity.number,
+    address_city: answers.identity.city,
+    address_state: answers.identity.state,
+    document_photo_url: answers.documentPhotoUrl,
+    document_check_status: documentCheck.status,
+    document_check_reason: documentCheck.reason,
     interested_cat_id: answers.interestedCatId,
     interested_cat_name: answers.interestedCatName,
     never_had_animals: answers.neverHadAnimals,

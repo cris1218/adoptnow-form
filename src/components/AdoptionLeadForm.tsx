@@ -6,8 +6,11 @@ import {
   checkPotentialAdopterPhone,
   loadAvailableAdoptionCats,
   savePotentialAdopter,
+  verifyLeadDocumentPhoto,
   type FormState,
 } from "@/app/actions";
+import { DocumentPhotoField } from "@/components/DocumentPhotoField";
+import { IdentityAddressFields } from "@/components/IdentityAddressFields";
 import {
   ChoiceGroup,
   FieldError,
@@ -99,6 +102,7 @@ export function AdoptionLeadForm({
   const [wantsKitten, setWantsKitten] = useState(false);
   const [wantsAdult, setWantsAdult] = useState(false);
   const [sexPreference, setSexPreference] = useState<SexPreference | "">("");
+  const [photoBusy, setPhotoBusy] = useState(false);
 
   useEffect(() => {
     if (lockedCat) return;
@@ -323,6 +327,23 @@ export function AdoptionLeadForm({
           </p>
         ) : null}
       </div>
+
+      <IdentityAddressFields />
+
+      <DocumentPhotoField
+        required
+        onBusyChange={setPhotoBusy}
+        checkDocument={
+          preview
+            ? undefined
+            : (url) =>
+                verifyLeadDocumentPhoto(
+                  token,
+                  exclusive ? "exclusive" : "phone",
+                  url
+                )
+        }
+      />
 
       <div>
         <label
@@ -677,7 +698,14 @@ export function AdoptionLeadForm({
       <div className="sticky bottom-0 -mx-6 mt-1 border-t border-stone-200 bg-white/95 px-6 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] backdrop-blur-sm compact:-mx-3 compact:px-3">
         <button
           type="submit"
-          disabled={preview || pending || loadingCats || phoneBlocked || checkingPhone}
+          disabled={
+            preview ||
+            pending ||
+            loadingCats ||
+            phoneBlocked ||
+            checkingPhone ||
+            photoBusy
+          }
           className="flex h-14 w-full items-center justify-center rounded-2xl bg-brand-dark text-lg font-semibold text-white shadow-sm transition active:scale-[0.99] enabled:hover:bg-brand-950 disabled:opacity-60"
         >
           {preview
@@ -686,9 +714,11 @@ export function AdoptionLeadForm({
               ? "Enviando..."
               : checkingPhone
                 ? "Validando WhatsApp..."
-                : loadingCats
-                  ? "Carregando..."
-                  : "Enviar questionário"}
+                : photoBusy
+                  ? "Processando foto..."
+                  : loadingCats
+                    ? "Carregando..."
+                    : "Enviar questionário"}
         </button>
       </div>
     </form>

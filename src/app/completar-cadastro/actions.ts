@@ -5,16 +5,11 @@ import {
   type DocumentCheckResult,
   type DocumentCheckStatus,
 } from "@/lib/documentCheck";
+import { parseIdentityAddress } from "@/lib/identityAddress";
+import { documentPhotoError } from "@/lib/questionnaire";
 import { getSupabaseForCompletion } from "@/lib/supabase";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { notifyStaffAdopterCompletion } from "@/lib/notifyStaff";
-import {
-  cepError,
-  cpfError,
-  houseNumberError,
-  onlyDigits,
-} from "@/lib/masks";
-import { isFormDocumentUrl } from "@/lib/questionnaire";
 
 export type CompletionFormState = {
   ok: boolean;
@@ -180,34 +175,16 @@ export async function submitAdopterCompletion(
   const phoneCipher = normalizePhoneCipher(
     String(formData.get("phoneCipher") ?? "")
   );
-  const document = onlyDigits(String(formData.get("document") ?? ""));
-  const cep = onlyDigits(String(formData.get("cep") ?? ""));
-  const street = String(formData.get("street") ?? "").trim();
-  const neighborhood = String(formData.get("neighborhood") ?? "").trim();
-  const number = String(formData.get("number") ?? "").trim();
-  const city = String(formData.get("city") ?? "").trim();
-  const state = String(formData.get("state") ?? "").trim().toUpperCase();
   const documentPhotoUrl = String(formData.get("documentPhotoUrl") ?? "").trim();
 
   if (!token || !phoneCipher) {
     return { ok: false, message: "Link inválido. Peça um novo link de cadastro." };
   }
-  const fieldError =
-    cpfError(document) ||
-    cepError(cep) ||
-    (street.length < 2 ? "Informe a rua." : "") ||
-    (neighborhood.length < 2 ? "Informe o bairro." : "") ||
-    houseNumberError(number) ||
-    (city.length < 2 ? "Informe a cidade." : "") ||
-    (!/^[A-Z]{2}$/.test(state) ? "Informe a UF com 2 letras." : "");
+  const { values: identity, error: identityError } =
+    parseIdentityAddress(formData);
+  const fieldError = identityError || documentPhotoError(documentPhotoUrl);
   if (fieldError) {
     return { ok: false, message: fieldError };
-  }
-  if (!documentPhotoUrl) {
-    return { ok: false, message: "Envie a foto do documento com foto." };
-  }
-  if (!isFormDocumentUrl(documentPhotoUrl)) {
-    return { ok: false, message: "A foto do documento é inválida. Envie novamente." };
   }
   if (String(formData.get("agreedToLgpd") ?? "") !== "true") {
     return {
@@ -221,13 +198,13 @@ export async function submitAdopterCompletion(
     const { data, error } = await supabase.rpc("submit_adopter_completion", {
       p_token: token,
       p_phone_cipher: phoneCipher,
-      p_document: document,
-      p_cep: cep,
-      p_street: street,
-      p_neighborhood: neighborhood,
-      p_number: number,
-      p_city: city,
-      p_state: state,
+      p_document: identity.document,
+      p_cep: identity.cep,
+      p_street: identity.street,
+      p_neighborhood: identity.neighborhood,
+      p_number: identity.number,
+      p_city: identity.city,
+      p_state: identity.state,
       p_document_photo_url: documentPhotoUrl,
     });
 

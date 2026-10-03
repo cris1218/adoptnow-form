@@ -71,40 +71,53 @@ async function notifyStaff(message: StaffPushMessage): Promise<void> {
   }
 }
 
+function documentCheckNote(documentCheck: DocumentCheckStatus): string {
+  if (documentCheck === "verificado") return "";
+  if (documentCheck === "reprovado") {
+    return " A foto enviada não parece um documento. Confira.";
+  }
+  return " Não foi possível conferir o documento automaticamente.";
+}
+
 export async function notifyStaffExclusiveCatInterest(
   fullName: string,
-  catName: string
+  catName: string,
+  documentCheck: DocumentCheckStatus
 ): Promise<void> {
   const person = fullName.trim() || "Alguém";
   const cat = catName.trim() || "gato exclusivo";
 
   await notifyStaff({
     title: "Gato exclusivo",
-    body: `${person} tem interesse em adotar o/a ${cat}!`,
+    body: `${person} tem interesse em adotar o/a ${cat}!${documentCheckNote(documentCheck)}`,
     data: {
       type: "exclusive-cat-interest",
       fullName: person,
       interestedCatName: cat,
+      documentCheck,
     },
   });
 }
 
 export async function notifyStaffPotentialAdopter(
   fullName: string,
-  interestedCatName = ""
+  interestedCatName: string,
+  documentCheck: DocumentCheckStatus
 ): Promise<void> {
   const firstName = getFirstName(fullName) || "Alguém";
   const catName = interestedCatName.trim();
+  const interest = catName
+    ? `${firstName} tem interesse em ${catName}.`
+    : `${firstName} tem interesse em adotar um gatinho.`;
 
   await notifyStaff({
     title: "Possível adotante",
-    body: catName
-      ? `${firstName} tem interesse em ${catName}.`
-      : `${firstName} tem interesse em adotar um gatinho.`,
+    body: `${interest}${documentCheckNote(documentCheck)}`,
     data: {
       type: "potential-adopter",
       fullName,
       interestedCatName: catName,
+      documentCheck,
     },
   });
 }
@@ -114,16 +127,10 @@ export async function notifyStaffAdopterCompletion(
   documentCheck: DocumentCheckStatus
 ): Promise<void> {
   const name = fullName.trim() || "Alguém";
-  const documentNote =
-    documentCheck === "verificado"
-      ? ""
-      : documentCheck === "reprovado"
-        ? " A foto enviada não parece um documento. Confira."
-        : " Não foi possível conferir o documento automaticamente.";
 
   await notifyStaff({
     title: "Cadastro de adoção",
-    body: `${name} preencheu os dados para adoção.${documentNote}`,
+    body: `${name} preencheu os dados para adoção.${documentCheckNote(documentCheck)}`,
     data: {
       type: "adopter-completion",
       fullName: name,
