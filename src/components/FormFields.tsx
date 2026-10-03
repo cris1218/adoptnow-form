@@ -101,10 +101,16 @@ export function useValidityMessage<T extends HTMLInputElement>(
   return ref;
 }
 
+export function fieldBorderClass(invalid: boolean) {
+  return invalid
+    ? "border-rose-400 focus:border-rose-500 focus:ring-rose-200"
+    : "border-stone-300 focus:border-brand-light";
+}
+
 export function FieldError({ id, message }: { id: string; message: string }) {
   if (!message) return null;
   return (
-    <p id={id} role="alert" className="mt-2 text-sm font-medium text-rose-700">
+    <p id={id} aria-live="polite" className="mt-2 text-sm font-medium text-rose-700">
       {message}
     </p>
   );
@@ -128,6 +134,7 @@ export function RequiredValue({
       ref={inputRef}
       value={filled ? "ok" : ""}
       required
+      inputMode="none"
       onChange={() => undefined}
       tabIndex={-1}
       aria-hidden="true"

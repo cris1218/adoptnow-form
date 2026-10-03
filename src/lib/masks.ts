@@ -41,11 +41,6 @@ export function isValidPhone(value: string): boolean {
   return digits.length === 10 || digits.length === 11;
 }
 
-export function isValidName(value: string): boolean {
-  const name = value.trim();
-  return name.length >= 2 && name.length <= 120;
-}
-
 export function normalizeFullName(value: string): string {
   return value.trim().replace(/\s+/g, " ");
 }
@@ -64,14 +59,18 @@ export function fullNameError(value: string): string {
     .split(" ")
     .filter((word) => !NAME_CONNECTORS.has(word.toLowerCase()));
   if (words.length < 2) return "Informe nome e sobrenome.";
-  if (words.some((word) => word.replace(/[^A-Za-zÀ-ÖØ-öø-ÿ]/g, "").length < 2)) {
+
+  const letterCount = (word: string) =>
+    word.replace(/[^A-Za-zÀ-ÖØ-öø-ÿ]/g, "").length;
+  const first = words[0];
+  const last = words[words.length - 1];
+  if (letterCount(first) < 2 || letterCount(last) < 2) {
     return "Nome e sobrenome precisam ter pelo menos 2 letras cada.";
   }
+  if (words.some((word) => letterCount(word) < 1)) {
+    return "Use apenas letras no nome, sem números ou símbolos.";
+  }
   return "";
-}
-
-export function isValidFullName(value: string): boolean {
-  return fullNameError(value) === "";
 }
 
 const CAT_NAME_PLACEHOLDERS = new Set([
@@ -103,12 +102,8 @@ const CAT_NAME_PLACEHOLDERS = new Set([
   "asdf",
 ]);
 
-export function normalizeCatName(value: string): string {
-  return value.trim();
-}
-
 export function catNameError(value: string): string {
-  const name = normalizeCatName(value);
+  const name = value.trim();
   if (!name) return "Informe o nome do gatinho.";
   if (/\s/.test(name)) {
     return "Informe só um nome, sem espaços (ex.: Juarez).";

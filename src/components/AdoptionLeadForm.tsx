@@ -11,6 +11,7 @@ import {
 import {
   ChoiceGroup,
   FieldError,
+  fieldBorderClass,
   Question,
   RequiredValue,
   ToggleChip,
@@ -272,11 +273,9 @@ export function AdoptionLeadForm({
           onChange={(event) => setFullName(event.target.value)}
           onBlur={() => setFullNameTouched(true)}
           onInvalid={() => setFullNameTouched(true)}
-          className={`h-14 w-full rounded-2xl border bg-white px-4 text-base text-stone-900 outline-none ring-brand-light placeholder:text-stone-400 focus:ring-2 ${
-            fullNameTouched && nameError
-              ? "border-rose-400 focus:border-rose-500 focus:ring-rose-200"
-              : "border-stone-300 focus:border-brand-light"
-          }`}
+          className={`h-14 w-full rounded-2xl border bg-white px-4 text-base text-stone-900 outline-none ring-brand-light placeholder:text-stone-400 focus:ring-2 ${fieldBorderClass(
+            fullNameTouched && Boolean(nameError)
+          )}`}
         />
         <FieldError
           id="fullName-error"
@@ -310,11 +309,9 @@ export function AdoptionLeadForm({
           onBlur={() => {
             void validatePhone(phone);
           }}
-          className={`h-14 w-full rounded-2xl border bg-white px-4 text-base text-stone-900 outline-none ring-brand-light placeholder:text-stone-400 focus:ring-2 ${
+          className={`h-14 w-full rounded-2xl border bg-white px-4 text-base text-stone-900 outline-none ring-brand-light placeholder:text-stone-400 focus:ring-2 ${fieldBorderClass(
             phoneBlocked
-              ? "border-rose-400 focus:border-rose-500 focus:ring-rose-200"
-              : "border-stone-300 focus:border-brand-light"
-          }`}
+          )}`}
         />
         {phoneError ? (
           <p
@@ -400,11 +397,9 @@ export function AdoptionLeadForm({
               onChange={(event) => setOtherCatName(event.target.value)}
               onBlur={() => setOtherCatNameTouched(true)}
               onInvalid={() => setOtherCatNameTouched(true)}
-              className={`mt-3 h-14 w-full rounded-2xl border bg-white px-4 text-base text-stone-900 outline-none ring-brand-light placeholder:text-stone-400 focus:ring-2 ${
-                otherCatNameTouched && otherCatNameError
-                  ? "border-rose-400 focus:border-rose-500 focus:ring-rose-200"
-                  : "border-stone-300 focus:border-brand-light"
-              }`}
+              className={`mt-3 h-14 w-full rounded-2xl border bg-white px-4 text-base text-stone-900 outline-none ring-brand-light placeholder:text-stone-400 focus:ring-2 ${fieldBorderClass(
+                otherCatNameTouched && Boolean(otherCatNameError)
+              )}`}
             />
             <FieldError
               id="interestedCatOtherName-error"

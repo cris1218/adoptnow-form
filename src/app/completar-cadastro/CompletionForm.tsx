@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useEffect, useState } from "react";
+import { useActionState, useEffect, useRef, useState } from "react";
 
 import {
   loadAdopterCompletion,
@@ -9,7 +9,11 @@ import {
 } from "@/app/completar-cadastro/actions";
 import { LgpdNotice } from "@/components/LgpdNotice";
 import { DocumentPhotoField } from "@/components/DocumentPhotoField";
-import { FieldError, useValidityMessage } from "@/components/FormFields";
+import {
+  FieldError,
+  fieldBorderClass,
+  useValidityMessage,
+} from "@/components/FormFields";
 import { PawMark } from "@/components/PawMark";
 import { fetchAddressByCep } from "@/lib/cep";
 import {
@@ -30,11 +34,7 @@ const inputBase =
   "h-14 w-full rounded-2xl border bg-white px-4 text-base text-stone-900 outline-none ring-brand-light placeholder:text-stone-400 focus:ring-2 disabled:bg-stone-100 disabled:text-stone-500";
 
 function inputClass(invalid = false) {
-  return `${inputBase} ${
-    invalid
-      ? "border-rose-400 focus:border-rose-500 focus:ring-rose-200"
-      : "border-stone-300 focus:border-brand-light"
-  }`;
+  return `${inputBase} ${fieldBorderClass(invalid)}`;
 }
 
 function textError(value: string, emptyMessage: string, minLength = 2) {
@@ -89,6 +89,7 @@ export function CompletionForm({
   const [uf, setUf] = useState("");
   const [cepHint, setCepHint] = useState("");
   const [photoBusy, setPhotoBusy] = useState(false);
+  const cepLookupSeq = useRef(0);
   const [touched, setTouched] = useState<Partial<Record<FieldName, boolean>>>(
     {}
   );
@@ -185,13 +186,16 @@ export function CompletionForm({
     setCep(masked);
     const digits = onlyDigits(masked);
     if (digits.length !== 8) {
+      cepLookupSeq.current += 1;
       setCepHint("");
       return;
     }
 
+    const seq = ++cepLookupSeq.current;
     setCepHint("Buscando endereço...");
     try {
       const address = await fetchAddressByCep(digits);
+      if (seq !== cepLookupSeq.current) return;
       setStreet(address.street);
       setNeighborhood(address.neighborhood);
       setCity(address.city);
@@ -199,6 +203,7 @@ export function CompletionForm({
       setCepHint("");
       numberInputRef.current?.focus();
     } catch {
+      if (seq !== cepLookupSeq.current) return;
       setCepHint("CEP não encontrado. Preencha o endereço manualmente.");
     }
   }

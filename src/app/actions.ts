@@ -5,7 +5,7 @@ import {
   type AvailableAdoptionCat,
 } from "@/lib/availableCats";
 import { getSupabaseServer } from "@/lib/supabase";
-import { catNameError, isValidPhone, normalizePhone } from "@/lib/masks";
+import { isValidPhone, normalizePhone } from "@/lib/masks";
 import {
   notifyStaffExclusiveCatInterest,
   notifyStaffPotentialAdopter,
@@ -148,12 +148,8 @@ export async function savePotentialAdopter(
       ? availableCats.find((cat) => cat.id === requestedId)
       : undefined;
 
-    if (!exclusive && parsed.answers.interestedCatOther) {
-      const catError = catNameError(parsed.answers.interestedCatName);
-      if (catError) {
-        return { ok: false, message: catError };
-      }
-    } else if (!selectedCat) {
+    const typedOtherCat = !exclusive && parsed.answers.interestedCatOther;
+    if (!typedOtherCat && !selectedCat) {
       return {
         ok: false,
         message: requestedId
