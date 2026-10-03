@@ -1,6 +1,12 @@
 "use server";
 
+import {
+  checkIdentityDocument,
+  type DocumentCheckResult,
+  type DocumentCheckStatus,
+} from "@/lib/documentCheck";
 import { getSupabaseForCompletion } from "@/lib/supabase";
+import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { notifyStaffAdopterCompletion } from "@/lib/notifyStaff";
 import {
   cepError,
@@ -120,6 +126,52 @@ export async function loadAdopterCompletion(
   }
 }
 
+export async function verifyDocumentPhoto(
+  token: string,
+  phoneCipher: string,
+  documentPhotoUrl: string
+): Promise<DocumentCheckStatus> {
+  const trimmedToken = token.trim();
+  const trimmedCipher = normalizePhoneCipher(phoneCipher);
+  if (!trimmedToken || !trimmedCipher) return "nao_verificado";
+
+  try {
+    const { data, error } = await getSupabaseForCompletion().rpc(
+      "get_adopter_completion_form",
+      { p_token: trimmedToken, p_phone_cipher: trimmedCipher }
+    );
+    if (error || !(data as RpcResult | null)?.ok) return "nao_verificado";
+  } catch {
+    return "nao_verificado";
+  }
+
+  const result = await checkIdentityDocument(documentPhotoUrl.trim());
+  return result.status;
+}
+
+async function saveDocumentCheck(
+  token: string,
+  phoneCipher: string,
+  check: DocumentCheckResult
+): Promise<void> {
+  const admin = getSupabaseAdmin();
+  if (!admin) return;
+
+  try {
+    const { error } = await admin.rpc("set_adopter_document_check", {
+      p_token: token,
+      p_phone_cipher: phoneCipher,
+      p_status: check.status,
+      p_reason: check.reason,
+    });
+    if (error) {
+      console.error("Falha ao salvar a verificação do documento:", error);
+    }
+  } catch (error) {
+    console.error("Falha ao salvar a verificação do documento:", error);
+  }
+}
+
 export async function submitAdopterCompletion(
   _prev: CompletionFormState,
   formData: FormData
@@ -151,7 +203,10 @@ export async function submitAdopterCompletion(
   if (fieldError) {
     return { ok: false, message: fieldError };
   }
-  if (documentPhotoUrl && !isFormDocumentUrl(documentPhotoUrl)) {
+  if (!documentPhotoUrl) {
+    return { ok: false, message: "Envie a foto do documento com foto." };
+  }
+  if (!isFormDocumentUrl(documentPhotoUrl)) {
     return { ok: false, message: "A foto do documento é inválida. Envie novamente." };
   }
   if (String(formData.get("agreedToLgpd") ?? "") !== "true") {
@@ -192,8 +247,11 @@ export async function submitAdopterCompletion(
       };
     }
 
+    const check = await checkIdentityDocument(documentPhotoUrl);
+    await saveDocumentCheck(token, phoneCipher, check);
+
     try {
-      await notifyStaffAdopterCompletion(result.full_name ?? "");
+      await notifyStaffAdopterCompletion(result.full_name ?? "", check.status);
     } catch (pushError) {
       console.error("Falha ao notificar a equipe:", pushError);
     }

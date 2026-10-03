@@ -1,3 +1,4 @@
+import type { DocumentCheckStatus } from "@/lib/documentCheck";
 import { getFirstName } from "@/lib/masks";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 
@@ -109,16 +110,24 @@ export async function notifyStaffPotentialAdopter(
 }
 
 export async function notifyStaffAdopterCompletion(
-  fullName: string
+  fullName: string,
+  documentCheck: DocumentCheckStatus
 ): Promise<void> {
   const name = fullName.trim() || "Alguém";
+  const documentNote =
+    documentCheck === "verificado"
+      ? ""
+      : documentCheck === "reprovado"
+        ? " A foto enviada não parece um documento. Confira."
+        : " Não foi possível conferir o documento automaticamente.";
 
   await notifyStaff({
     title: "Cadastro de adoção",
-    body: `${name} preencheu os dados para adoção.`,
+    body: `${name} preencheu os dados para adoção.${documentNote}`,
     data: {
       type: "adopter-completion",
       fullName: name,
+      documentCheck,
     },
   });
 }

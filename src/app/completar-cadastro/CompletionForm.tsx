@@ -5,6 +5,7 @@ import { useActionState, useEffect, useRef, useState } from "react";
 import {
   loadAdopterCompletion,
   submitAdopterCompletion,
+  verifyDocumentPhoto,
   type CompletionFormState,
 } from "@/app/completar-cadastro/actions";
 import { LgpdNotice } from "@/components/LgpdNotice";
@@ -492,7 +493,15 @@ export function CompletionForm({
         <FieldError id="state-error" message={visibleError("state")} />
       </div>
 
-      <DocumentPhotoField onBusyChange={setPhotoBusy} />
+      <DocumentPhotoField
+        required
+        onBusyChange={setPhotoBusy}
+        checkDocument={
+          preview
+            ? undefined
+            : (url) => verifyDocumentPhoto(token, phoneCipher, url)
+        }
+      />
 
       <LgpdNotice />
 
@@ -530,7 +539,7 @@ export function CompletionForm({
             : pending
               ? "Enviando..."
               : photoBusy
-                ? "Enviando foto..."
+                ? "Processando foto..."
                 : "Enviar dados"}
         </button>
       </div>

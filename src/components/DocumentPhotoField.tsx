@@ -2,6 +2,8 @@
 
 import { useEffect, useRef, useState } from "react";
 
+import type { DocumentCheckStatus } from "@/lib/documentCheck";
+
 const MAX_BYTES = 10 * 1024 * 1024;
 const ACCEPT_FILES =
   "image/jpeg,image/png,image/webp,image/heic,image/heif,application/pdf";
@@ -80,24 +82,39 @@ async function presignAndUpload(file: File, extension: string): Promise<string> 
 
 export function DocumentPhotoField({
   disabled = false,
+  required = false,
   onBusyChange,
+  checkDocument,
 }: {
   disabled?: boolean;
+  required?: boolean;
   onBusyChange?: (busy: boolean) => void;
+  checkDocument?: (url: string) => Promise<DocumentCheckStatus>;
 }) {
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const urlInputRef = useRef<HTMLInputElement>(null);
+  const uploadSeq = useRef(0);
   const [isMobile, setIsMobile] = useState(false);
   const [previewUrl, setPreviewUrl] = useState("");
   const [publicUrl, setPublicUrl] = useState("");
   const [fileName, setFileName] = useState("");
   const [isPdf, setIsPdf] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [checkStatus, setCheckStatus] = useState<
+    DocumentCheckStatus | "checking" | ""
+  >("");
   const [error, setError] = useState("");
 
   useEffect(() => {
     setIsMobile(isMobileDevice());
   }, []);
+
+  useEffect(() => {
+    urlInputRef.current?.setCustomValidity(
+      required && !publicUrl ? "Envie a foto do documento com foto." : ""
+    );
+  }, [required, publicUrl]);
 
   useEffect(() => {
     return () => {
@@ -121,16 +138,29 @@ export function DocumentPhotoField({
 
     if (previewUrl.startsWith("blob:")) URL.revokeObjectURL(previewUrl);
     const localPreview = URL.createObjectURL(file);
+    const seq = ++uploadSeq.current;
     setPreviewUrl(localPreview);
     setFileName(file.name);
     setIsPdf(extension === "pdf");
+    setPublicUrl("");
+    setCheckStatus("");
     setUploading(true);
     onBusyChange?.(true);
 
     try {
       const uploaded = await presignAndUpload(file, extension);
+      if (seq !== uploadSeq.current) return;
       setPublicUrl(uploaded);
+
+      if (checkDocument) {
+        setCheckStatus("checking");
+        const status = await checkDocument(uploaded).catch(
+          () => "nao_verificado" as const
+        );
+        if (seq === uploadSeq.current) setCheckStatus(status);
+      }
     } catch (uploadError) {
+      if (seq !== uploadSeq.current) return;
       setPublicUrl("");
       setError(
         uploadError instanceof Error
@@ -138,19 +168,23 @@ export function DocumentPhotoField({
           : "Não foi possível enviar a foto."
       );
     } finally {
-      setUploading(false);
-      onBusyChange?.(false);
+      if (seq === uploadSeq.current) {
+        setUploading(false);
+        onBusyChange?.(false);
+      }
       if (cameraInputRef.current) cameraInputRef.current.value = "";
       if (fileInputRef.current) fileInputRef.current.value = "";
     }
   }
 
   function clearPhoto() {
+    uploadSeq.current += 1;
     if (previewUrl.startsWith("blob:")) URL.revokeObjectURL(previewUrl);
     setPreviewUrl("");
     setPublicUrl("");
     setFileName("");
     setIsPdf(false);
+    setCheckStatus("");
     setError("");
     if (cameraInputRef.current) cameraInputRef.current.value = "";
     if (fileInputRef.current) fileInputRef.current.value = "";
@@ -161,8 +195,13 @@ export function DocumentPhotoField({
   return (
     <div>
       <p className="mb-2 text-sm font-semibold text-stone-700">
-        Documento com foto{" "}
-        <span className="font-medium text-stone-500">(opcional)</span>
+        Documento com foto
+        {required ? null : (
+          <>
+            {" "}
+            <span className="font-medium text-stone-500">(opcional)</span>
+          </>
+        )}
       </p>
       <p className="mb-3 text-sm leading-relaxed text-stone-500">
         RG, CNH ou outro documento com foto.
@@ -188,7 +227,18 @@ export function DocumentPhotoField({
         className="hidden"
         onChange={(event) => void handleFile(event.target.files?.[0])}
       />
-      <input type="hidden" name="documentPhotoUrl" value={publicUrl} />
+      <input
+        ref={urlInputRef}
+        type="text"
+        name="documentPhotoUrl"
+        value={publicUrl}
+        required={required && !disabled}
+        inputMode="none"
+        onChange={() => undefined}
+        tabIndex={-1}
+        aria-hidden="true"
+        className="sr-only"
+      />
 
       {previewUrl ? (
         <div className="overflow-hidden rounded-2xl border border-stone-300 bg-white">
@@ -281,7 +331,24 @@ export function DocumentPhotoField({
       )}
 
       {uploading ? (
-        <p className="mt-2 text-sm text-stone-500">Enviando foto...</p>
+        <p className="mt-2 text-sm text-stone-500">
+          {checkStatus === "checking" ? "Conferindo o documento..." : "Enviando foto..."}
+        </p>
+      ) : null}
+      {checkStatus === "verificado" ? (
+        <p className="mt-2 rounded-xl bg-emerald-50 px-3 py-2 text-sm font-medium text-emerald-800">
+          Documento reconhecido.
+        </p>
+      ) : null}
+      {checkStatus === "reprovado" ? (
+        <p
+          role="alert"
+          className="mt-2 rounded-xl bg-amber-50 px-3 py-2 text-sm font-medium leading-relaxed text-amber-950"
+        >
+          Não reconhecemos um documento de identidade nesta foto. Tire outra
+          foto mostrando o documento inteiro, bem iluminado e sem reflexo. Se
+          enviar assim mesmo, a equipe vai conferir manualmente.
+        </p>
       ) : null}
       {error ? (
         <p role="alert" className="mt-2 text-sm font-medium text-rose-700">

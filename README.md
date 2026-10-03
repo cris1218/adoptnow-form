@@ -43,4 +43,6 @@ As respostas vão para a tabela `potential_adopters`.
    - `SUPABASE_URL`
    - `SUPABASE_ANON_KEY`
    - `SUPABASE_SERVICE_ROLE_KEY`
-4. Deploy. O link gerado (ex.: `https://recantoronron.vercel.app`) é o que vai para o adotante.
+   - `GEMINI_API_KEY` (verificação automática da foto do documento; crie em [aistudio.google.com/apikey](https://aistudio.google.com/apikey))
+4. No SQL Editor do Supabase, rode `supabase/adopter_document_check.sql` (colunas `document_check_*` em `adopters`).
+5. Deploy. O link gerado (ex.: `https://recantoronron.vercel.app`) é o que vai para o adotante.
