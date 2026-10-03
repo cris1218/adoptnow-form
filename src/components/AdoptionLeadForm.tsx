@@ -8,7 +8,14 @@ import {
   savePotentialAdopter,
   type FormState,
 } from "@/app/actions";
-import { ChoiceGroup, Question, RequiredValue, ToggleChip } from "@/components/FormFields";
+import {
+  ChoiceGroup,
+  FieldError,
+  Question,
+  RequiredValue,
+  ToggleChip,
+  useValidityMessage,
+} from "@/components/FormFields";
 import { HomeVideoField } from "@/components/HomeVideoField";
 import { LgpdNotice } from "@/components/LgpdNotice";
 import { PawMark } from "@/components/PawMark";
@@ -18,7 +25,13 @@ import {
   formatCatSex,
   type AvailableAdoptionCat,
 } from "@/lib/availableCats";
-import { isValidPhone, maskPhone, normalizePhone } from "@/lib/masks";
+import {
+  catNameError,
+  fullNameError,
+  isValidPhone,
+  maskPhone,
+  normalizePhone,
+} from "@/lib/masks";
 import {
   INTERESTED_CAT_OTHER,
   type HomeType,
@@ -47,8 +60,19 @@ export function AdoptionLeadForm({
     savePotentialAdopter,
     initialState
   );
+  const [fullName, setFullName] = useState("");
+  const [fullNameTouched, setFullNameTouched] = useState(false);
+  const nameError = fullNameError(fullName);
+  const fullNameRef = useValidityMessage<HTMLInputElement>(nameError);
   const [phone, setPhone] = useState("");
   const [phoneError, setPhoneError] = useState<string | null>(null);
+  const phoneRef = useValidityMessage<HTMLInputElement>(
+    !phone
+      ? "Informe seu WhatsApp."
+      : isValidPhone(phone)
+        ? ""
+        : "Informe um WhatsApp válido com DDD."
+  );
   const [checkingPhone, setCheckingPhone] = useState(false);
   const phoneCheckSeq = useRef(0);
   const [availableCats, setAvailableCats] = useState<AvailableAdoptionCat[]>(
@@ -57,6 +81,10 @@ export function AdoptionLeadForm({
   const [loadingCats, setLoadingCats] = useState(!lockedCat);
   const [interestedCatId, setInterestedCatId] = useState(lockedCat?.id ?? "");
   const [otherCatName, setOtherCatName] = useState("");
+  const [otherCatNameTouched, setOtherCatNameTouched] = useState(false);
+  const otherCatNameError = catNameError(otherCatName);
+  const otherCatNameRef =
+    useValidityMessage<HTMLInputElement>(otherCatNameError);
   const [neverHadAnimals, setNeverHadAnimals] = useState(false);
   const [hadCats, setHadCats] = useState(false);
   const [hadDogs, setHadDogs] = useState(false);
@@ -223,20 +251,36 @@ export function AdoptionLeadForm({
           htmlFor="fullName"
           className="mb-2 block text-sm font-semibold text-stone-700"
         >
-          Seu nome
+          Nome completo
         </label>
         <input
+          ref={fullNameRef}
           id="fullName"
           name="fullName"
           type="text"
           required
-          minLength={2}
           maxLength={120}
           autoComplete="name"
           autoCapitalize="words"
           autoCorrect="off"
           placeholder="Nome e sobrenome"
-          className="h-14 w-full rounded-2xl border border-stone-300 bg-white px-4 text-base text-stone-900 outline-none ring-brand-light placeholder:text-stone-400 focus:border-brand-light focus:ring-2"
+          value={fullName}
+          aria-invalid={(fullNameTouched && Boolean(nameError)) || undefined}
+          aria-describedby={
+            fullNameTouched && nameError ? "fullName-error" : undefined
+          }
+          onChange={(event) => setFullName(event.target.value)}
+          onBlur={() => setFullNameTouched(true)}
+          onInvalid={() => setFullNameTouched(true)}
+          className={`h-14 w-full rounded-2xl border bg-white px-4 text-base text-stone-900 outline-none ring-brand-light placeholder:text-stone-400 focus:ring-2 ${
+            fullNameTouched && nameError
+              ? "border-rose-400 focus:border-rose-500 focus:ring-rose-200"
+              : "border-stone-300 focus:border-brand-light"
+          }`}
+        />
+        <FieldError
+          id="fullName-error"
+          message={fullNameTouched ? nameError : ""}
         />
       </div>
 
@@ -248,6 +292,7 @@ export function AdoptionLeadForm({
           WhatsApp
         </label>
         <input
+          ref={phoneRef}
           id="phone"
           name="phone"
           type="tel"
@@ -332,20 +377,40 @@ export function AdoptionLeadForm({
         />
         )}
         {interestedCatId === INTERESTED_CAT_OTHER ? (
-          <input
-            id="interestedCatOtherName"
-            name="interestedCatOtherName"
-            type="text"
-            required
-            minLength={2}
-            maxLength={80}
-            autoCapitalize="words"
-            autoCorrect="off"
-            placeholder="Qual o nome do gatinho?"
-            value={otherCatName}
-            onChange={(event) => setOtherCatName(event.target.value)}
-            className="mt-3 h-14 w-full rounded-2xl border border-stone-300 bg-white px-4 text-base text-stone-900 outline-none ring-brand-light placeholder:text-stone-400 focus:border-brand-light focus:ring-2"
-          />
+          <>
+            <input
+              ref={otherCatNameRef}
+              id="interestedCatOtherName"
+              name="interestedCatOtherName"
+              type="text"
+              required
+              maxLength={30}
+              autoCapitalize="words"
+              autoCorrect="off"
+              placeholder="Nome do gatinho (ex.: Juarez)"
+              value={otherCatName}
+              aria-invalid={
+                (otherCatNameTouched && Boolean(otherCatNameError)) || undefined
+              }
+              aria-describedby={
+                otherCatNameTouched && otherCatNameError
+                  ? "interestedCatOtherName-error"
+                  : undefined
+              }
+              onChange={(event) => setOtherCatName(event.target.value)}
+              onBlur={() => setOtherCatNameTouched(true)}
+              onInvalid={() => setOtherCatNameTouched(true)}
+              className={`mt-3 h-14 w-full rounded-2xl border bg-white px-4 text-base text-stone-900 outline-none ring-brand-light placeholder:text-stone-400 focus:ring-2 ${
+                otherCatNameTouched && otherCatNameError
+                  ? "border-rose-400 focus:border-rose-500 focus:ring-rose-200"
+                  : "border-stone-300 focus:border-brand-light"
+              }`}
+            />
+            <FieldError
+              id="interestedCatOtherName-error"
+              message={otherCatNameTouched ? otherCatNameError : ""}
+            />
+          </>
         ) : (
           <input
             type="hidden"

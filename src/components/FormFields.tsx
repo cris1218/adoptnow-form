@@ -89,6 +89,27 @@ export function ToggleChip({
   );
 }
 
+export function useValidityMessage<T extends HTMLInputElement>(
+  message: string
+) {
+  const ref = useRef<T>(null);
+
+  useEffect(() => {
+    ref.current?.setCustomValidity(message);
+  });
+
+  return ref;
+}
+
+export function FieldError({ id, message }: { id: string; message: string }) {
+  if (!message) return null;
+  return (
+    <p id={id} role="alert" className="mt-2 text-sm font-medium text-rose-700">
+      {message}
+    </p>
+  );
+}
+
 export function RequiredValue({
   filled,
   message,
@@ -107,7 +128,7 @@ export function RequiredValue({
       ref={inputRef}
       value={filled ? "ok" : ""}
       required
-      readOnly
+      onChange={() => undefined}
       tabIndex={-1}
       aria-hidden="true"
       className="sr-only"

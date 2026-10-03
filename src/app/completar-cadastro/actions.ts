@@ -2,7 +2,12 @@
 
 import { getSupabaseForCompletion } from "@/lib/supabase";
 import { notifyStaffAdopterCompletion } from "@/lib/notifyStaff";
-import { isValidCep, isValidCpf, onlyDigits } from "@/lib/masks";
+import {
+  cepError,
+  cpfError,
+  houseNumberError,
+  onlyDigits,
+} from "@/lib/masks";
 import { isFormDocumentUrl } from "@/lib/questionnaire";
 
 export type CompletionFormState = {
@@ -135,23 +140,25 @@ export async function submitAdopterCompletion(
   if (!token || !phoneCipher) {
     return { ok: false, message: "Link inválido. Peça um novo link de cadastro." };
   }
-  if (!isValidCpf(document)) {
-    return { ok: false, message: "Informe um CPF válido com 11 dígitos." };
-  }
-  if (!isValidCep(cep)) {
-    return { ok: false, message: "Informe um CEP válido." };
-  }
-  if (
-    street.length < 2 ||
-    neighborhood.length < 2 ||
-    number.length < 1 ||
-    city.length < 2 ||
-    state.length !== 2
-  ) {
-    return { ok: false, message: "Preencha o endereço completo." };
+  const fieldError =
+    cpfError(document) ||
+    cepError(cep) ||
+    (street.length < 2 ? "Informe a rua." : "") ||
+    (neighborhood.length < 2 ? "Informe o bairro." : "") ||
+    houseNumberError(number) ||
+    (city.length < 2 ? "Informe a cidade." : "") ||
+    (!/^[A-Z]{2}$/.test(state) ? "Informe a UF com 2 letras." : "");
+  if (fieldError) {
+    return { ok: false, message: fieldError };
   }
   if (documentPhotoUrl && !isFormDocumentUrl(documentPhotoUrl)) {
     return { ok: false, message: "A foto do documento é inválida. Envie novamente." };
+  }
+  if (String(formData.get("agreedToLgpd") ?? "") !== "true") {
+    return {
+      ok: false,
+      message: "É preciso autorizar o uso dos dados conforme a LGPD.",
+    };
   }
 
   try {

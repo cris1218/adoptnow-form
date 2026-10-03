@@ -1,3 +1,5 @@
+import { catNameError, fullNameError, normalizeFullName } from "@/lib/masks";
+
 export type HomeType = "casa" | "apartamento";
 export type SexPreference = "femea" | "macho" | "indiferente";
 
@@ -93,7 +95,7 @@ export function parseAnswers(
   formData: FormData,
   phone: string
 ): { answers?: AdoptionAnswers; error?: string } {
-  const fullName = String(formData.get("fullName") ?? "").trim();
+  const fullName = normalizeFullName(String(formData.get("fullName") ?? ""));
   const neverHadAnimals = parseCheckbox(formData.get("neverHadAnimals"));
   const hadCats = parseCheckbox(formData.get("hadCats"));
   const hadDogs = parseCheckbox(formData.get("hadDogs"));
@@ -129,16 +131,18 @@ export function parseAnswers(
     ) ?? ""
   ).trim();
 
-  if (fullName.length < 2 || fullName.length > 120) {
-    return { error: "Informe seu nome completo." };
+  const nameError = fullNameError(fullName);
+  if (nameError) {
+    return { error: nameError };
   }
 
   if (!interestedCatIdRaw) {
     return { error: "Selecione o gatinho que tem interesse." };
   }
 
-  if (interestedCatOther && (interestedCatName.length < 2 || interestedCatName.length > 80)) {
-    return { error: "Informe o nome do gatinho." };
+  if (interestedCatOther) {
+    const catError = catNameError(interestedCatName);
+    if (catError) return { error: catError };
   }
 
   if (!neverHadAnimals && !hadCats && !hadDogs) {
@@ -213,6 +217,10 @@ export function parseAnswers(
 
   if (!willSendVideoWhatsapp && !isFormVideoUrl(homeVideoUrl)) {
     return { error: "Envie o vídeo do local (até 1 minuto) ou marque que vai enviar pelo WhatsApp." };
+  }
+
+  if (!parseCheckbox(formData.get("agreedToLgpd"))) {
+    return { error: "É preciso autorizar o uso dos dados conforme a LGPD." };
   }
 
   return {

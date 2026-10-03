@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useEffect, useRef, useState } from "react";
+import { useActionState, useEffect, useState } from "react";
 
 import {
   loadAdopterCompletion,
@@ -9,14 +9,59 @@ import {
 } from "@/app/completar-cadastro/actions";
 import { LgpdNotice } from "@/components/LgpdNotice";
 import { DocumentPhotoField } from "@/components/DocumentPhotoField";
+import { FieldError, useValidityMessage } from "@/components/FormFields";
 import { PawMark } from "@/components/PawMark";
 import { fetchAddressByCep } from "@/lib/cep";
-import { maskCep, maskCpf, maskPhone, onlyDigits } from "@/lib/masks";
+import {
+  cepError,
+  cpfError,
+  fullNameError,
+  houseNumberError,
+  isValidPhone,
+  maskCep,
+  maskCpf,
+  maskPhone,
+  onlyDigits,
+} from "@/lib/masks";
 
 const initialState: CompletionFormState = null;
 
-const inputClass =
-  "h-14 w-full rounded-2xl border border-stone-300 bg-white px-4 text-base text-stone-900 outline-none ring-brand-light placeholder:text-stone-400 focus:border-brand-light focus:ring-2 disabled:bg-stone-100 disabled:text-stone-500";
+const inputBase =
+  "h-14 w-full rounded-2xl border bg-white px-4 text-base text-stone-900 outline-none ring-brand-light placeholder:text-stone-400 focus:ring-2 disabled:bg-stone-100 disabled:text-stone-500";
+
+function inputClass(invalid = false) {
+  return `${inputBase} ${
+    invalid
+      ? "border-rose-400 focus:border-rose-500 focus:ring-rose-200"
+      : "border-stone-300 focus:border-brand-light"
+  }`;
+}
+
+function textError(value: string, emptyMessage: string, minLength = 2) {
+  const trimmed = value.trim();
+  if (!trimmed) return emptyMessage;
+  if (trimmed.length < minLength) {
+    return `Informe pelo menos ${minLength} caracteres.`;
+  }
+  return "";
+}
+
+function ufError(value: string) {
+  if (!value.trim()) return "Informe a UF.";
+  if (!/^[A-Z]{2}$/.test(value)) return "Use a sigla do estado (ex.: RS).";
+  return "";
+}
+
+type FieldName =
+  | "fullName"
+  | "phone"
+  | "document"
+  | "cep"
+  | "street"
+  | "neighborhood"
+  | "number"
+  | "city"
+  | "state";
 
 export function CompletionForm({
   token,
@@ -44,7 +89,60 @@ export function CompletionForm({
   const [uf, setUf] = useState("");
   const [cepHint, setCepHint] = useState("");
   const [photoBusy, setPhotoBusy] = useState(false);
-  const numberInputRef = useRef<HTMLInputElement>(null);
+  const [touched, setTouched] = useState<Partial<Record<FieldName, boolean>>>(
+    {}
+  );
+
+  const errors: Record<FieldName, string> = {
+    fullName: preview ? fullNameError(fullName) : "",
+    phone: preview
+      ? phone
+        ? isValidPhone(phone)
+          ? ""
+          : "Informe um telefone válido com DDD."
+        : "Informe seu telefone."
+      : "",
+    document: cpfError(document),
+    cep: cepError(cep),
+    street: textError(street, "Informe a rua."),
+    neighborhood: textError(neighborhood, "Informe o bairro."),
+    number: houseNumberError(number),
+    city: textError(city, "Informe a cidade."),
+    state: ufError(uf),
+  };
+
+  const fullNameRef = useValidityMessage<HTMLInputElement>(errors.fullName);
+  const phoneRef = useValidityMessage<HTMLInputElement>(errors.phone);
+  const documentRef = useValidityMessage<HTMLInputElement>(errors.document);
+  const cepRef = useValidityMessage<HTMLInputElement>(errors.cep);
+  const streetRef = useValidityMessage<HTMLInputElement>(errors.street);
+  const neighborhoodRef = useValidityMessage<HTMLInputElement>(
+    errors.neighborhood
+  );
+  const numberInputRef = useValidityMessage<HTMLInputElement>(errors.number);
+  const cityRef = useValidityMessage<HTMLInputElement>(errors.city);
+  const stateRef = useValidityMessage<HTMLInputElement>(errors.state);
+
+  function touch(field: FieldName) {
+    setTouched((current) =>
+      current[field] ? current : { ...current, [field]: true }
+    );
+  }
+
+  function visibleError(field: FieldName) {
+    return touched[field] ? errors[field] : "";
+  }
+
+  function fieldProps(field: FieldName) {
+    const message = visibleError(field);
+    return {
+      "aria-invalid": Boolean(message) || undefined,
+      "aria-describedby": message ? `${field}-error` : undefined,
+      onBlur: () => touch(field),
+      onInvalid: () => touch(field),
+      className: inputClass(Boolean(message)),
+    };
+  }
 
   useEffect(() => {
     if (preview) return;
@@ -195,12 +293,14 @@ export function CompletionForm({
           Nome completo
         </label>
         <input
+          ref={fullNameRef}
           id="fullName"
           name="fullName"
           value={fullName}
           disabled={!preview}
           readOnly={!preview}
           required={preview}
+          maxLength={120}
           autoComplete="name"
           autoCapitalize="words"
           placeholder={preview ? "Nome e sobrenome" : undefined}
@@ -209,8 +309,9 @@ export function CompletionForm({
               ? (event) => setFullName(event.target.value)
               : undefined
           }
-          className={inputClass}
+          {...fieldProps("fullName")}
         />
+        <FieldError id="fullName-error" message={visibleError("fullName")} />
       </div>
 
       <div>
@@ -218,6 +319,7 @@ export function CompletionForm({
           Telefone
         </label>
         <input
+          ref={phoneRef}
           id="phone"
           name="phone"
           type="tel"
@@ -233,8 +335,9 @@ export function CompletionForm({
               ? (event) => setPhone(maskPhone(event.target.value))
               : undefined
           }
-          className={inputClass}
+          {...fieldProps("phone")}
         />
+        <FieldError id="phone-error" message={visibleError("phone")} />
       </div>
 
       <div>
@@ -242,6 +345,7 @@ export function CompletionForm({
           CPF
         </label>
         <input
+          ref={documentRef}
           id="document"
           name="document"
           inputMode="numeric"
@@ -250,8 +354,9 @@ export function CompletionForm({
           placeholder="000.000.000-00"
           value={document}
           onChange={(event) => setDocument(maskCpf(event.target.value))}
-          className={inputClass}
+          {...fieldProps("document")}
         />
+        <FieldError id="document-error" message={visibleError("document")} />
       </div>
 
       <div>
@@ -259,6 +364,7 @@ export function CompletionForm({
           CEP
         </label>
         <input
+          ref={cepRef}
           id="cep"
           name="cep"
           inputMode="numeric"
@@ -267,8 +373,9 @@ export function CompletionForm({
           placeholder="00000-000"
           value={cep}
           onChange={(event) => void handleCepChange(event.target.value)}
-          className={inputClass}
+          {...fieldProps("cep")}
         />
+        <FieldError id="cep-error" message={visibleError("cep")} />
         {cepHint ? (
           <p className="mt-2 text-sm text-stone-500">{cepHint}</p>
         ) : null}
@@ -279,13 +386,17 @@ export function CompletionForm({
           Rua
         </label>
         <input
+          ref={streetRef}
           id="street"
           name="street"
           required
+          maxLength={160}
+          autoComplete="address-line1"
           value={street}
           onChange={(event) => setStreet(event.target.value)}
-          className={inputClass}
+          {...fieldProps("street")}
         />
+        <FieldError id="street-error" message={visibleError("street")} />
       </div>
 
       <div>
@@ -293,18 +404,24 @@ export function CompletionForm({
           Bairro
         </label>
         <input
+          ref={neighborhoodRef}
           id="neighborhood"
           name="neighborhood"
           required
+          maxLength={120}
           value={neighborhood}
           onChange={(event) => setNeighborhood(event.target.value)}
-          className={inputClass}
+          {...fieldProps("neighborhood")}
+        />
+        <FieldError
+          id="neighborhood-error"
+          message={visibleError("neighborhood")}
         />
       </div>
 
       <div>
         <label htmlFor="number" className="mb-2 block text-sm font-semibold text-stone-700">
-          Número
+          Número da casa
         </label>
         <input
           ref={numberInputRef}
@@ -312,41 +429,62 @@ export function CompletionForm({
           name="number"
           inputMode="numeric"
           required
+          maxLength={7}
+          placeholder="123"
           value={number}
-          onChange={(event) => setNumber(event.target.value)}
-          className={inputClass}
+          onChange={(event) =>
+            setNumber(event.target.value.replace(/[^\dA-Za-z]/g, "").slice(0, 7))
+          }
+          {...fieldProps("number")}
         />
+        <FieldError id="number-error" message={visibleError("number")} />
       </div>
 
-      <div className="flex gap-3">
-        <div className="flex-1">
-          <label htmlFor="city" className="mb-2 block text-sm font-semibold text-stone-700">
-            Cidade
-          </label>
-          <input
-            id="city"
-            name="city"
-            required
-            value={city}
-            onChange={(event) => setCity(event.target.value)}
-            className={inputClass}
-          />
+      <div>
+        <div className="flex gap-3">
+          <div className="flex-1">
+            <label htmlFor="city" className="mb-2 block text-sm font-semibold text-stone-700">
+              Cidade
+            </label>
+            <input
+              ref={cityRef}
+              id="city"
+              name="city"
+              required
+              maxLength={120}
+              autoComplete="address-level2"
+              value={city}
+              onChange={(event) => setCity(event.target.value)}
+              {...fieldProps("city")}
+            />
+          </div>
+          <div className="w-24">
+            <label htmlFor="state" className="mb-2 block text-sm font-semibold text-stone-700">
+              UF
+            </label>
+            <input
+              ref={stateRef}
+              id="state"
+              name="state"
+              required
+              maxLength={2}
+              autoCapitalize="characters"
+              autoComplete="address-level1"
+              value={uf}
+              onChange={(event) =>
+                setUf(
+                  event.target.value
+                    .toUpperCase()
+                    .replace(/[^A-Z]/g, "")
+                    .slice(0, 2)
+                )
+              }
+              {...fieldProps("state")}
+            />
+          </div>
         </div>
-        <div className="w-24">
-          <label htmlFor="state" className="mb-2 block text-sm font-semibold text-stone-700">
-            UF
-          </label>
-          <input
-            id="state"
-            name="state"
-            required
-            maxLength={2}
-            autoCapitalize="characters"
-            value={uf}
-            onChange={(event) => setUf(event.target.value.toUpperCase().slice(0, 2))}
-            className={inputClass}
-          />
-        </div>
+        <FieldError id="city-error" message={visibleError("city")} />
+        <FieldError id="state-error" message={visibleError("state")} />
       </div>
 
       <DocumentPhotoField onBusyChange={setPhotoBusy} />

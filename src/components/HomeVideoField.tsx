@@ -488,7 +488,7 @@ export function HomeVideoField({ disabled = false }: { disabled?: boolean }) {
         name="homeVideoUrl"
         value={videoUrl}
         required={!disabled && !viaWhatsapp}
-        readOnly
+        onChange={() => undefined}
         tabIndex={-1}
         aria-hidden="true"
         className="sr-only"

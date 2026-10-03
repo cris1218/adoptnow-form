@@ -5,7 +5,7 @@ import {
   type AvailableAdoptionCat,
 } from "@/lib/availableCats";
 import { getSupabaseServer } from "@/lib/supabase";
-import { isValidPhone, normalizePhone } from "@/lib/masks";
+import { catNameError, isValidPhone, normalizePhone } from "@/lib/masks";
 import {
   notifyStaffExclusiveCatInterest,
   notifyStaffPotentialAdopter,
@@ -149,8 +149,9 @@ export async function savePotentialAdopter(
       : undefined;
 
     if (!exclusive && parsed.answers.interestedCatOther) {
-      if (parsed.answers.interestedCatName.length < 2) {
-        return { ok: false, message: "Informe o nome do gatinho." };
+      const catError = catNameError(parsed.answers.interestedCatName);
+      if (catError) {
+        return { ok: false, message: catError };
       }
     } else if (!selectedCat) {
       return {
