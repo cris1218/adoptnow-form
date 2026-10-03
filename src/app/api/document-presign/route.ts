@@ -59,7 +59,7 @@ export async function POST(request: Request) {
     );
   }
 
-  const response = await fetch(`${uploadUrl.replace(/\/$/, "")}/presign-form`, {
+  const response = await fetch(`${uploadUrl.replace(/\/$/, "")}/presign-form-doc`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
