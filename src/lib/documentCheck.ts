@@ -8,7 +8,7 @@ export type DocumentCheckResult = {
 };
 
 const GEMINI_ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/models";
-const DEFAULT_GEMINI_MODEL = "gemini-2.5-flash";
+const DEFAULT_GEMINI_MODEL = "gemini-flash-latest";
 const MAX_DOCUMENT_BYTES = 10 * 1024 * 1024;
 const REQUEST_TIMEOUT_MS = 20_000;
 
@@ -52,6 +52,7 @@ const RESPONSE_SCHEMA = {
 };
 
 function unverified(reason: string): DocumentCheckResult {
+  console.warn(`Documento não verificado: ${reason}`);
   return { status: "nao_verificado", reason };
 }
 

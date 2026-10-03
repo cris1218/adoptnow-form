@@ -271,7 +271,12 @@ export function HomeVideoField({ disabled = false }: { disabled?: boolean }) {
 
     const extension = extensionFromFile(file);
     if (!extension) {
-      setError("Use um vídeo mp4, webm ou mov.");
+      setError(
+        file.type.startsWith("image/")
+          ? "Este campo é para o vídeo do local. A foto do documento vai no campo \"Documento com foto\", mais acima."
+          : "Use um vídeo mp4, webm ou mov."
+      );
+      if (fileRef.current) fileRef.current.value = "";
       return;
     }
 

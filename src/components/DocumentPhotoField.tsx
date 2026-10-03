@@ -350,6 +350,12 @@ export function DocumentPhotoField({
           enviar assim mesmo, a equipe vai conferir manualmente.
         </p>
       ) : null}
+      {checkStatus === "nao_verificado" ? (
+        <p className="mt-2 rounded-xl bg-stone-100 px-3 py-2 text-sm font-medium leading-relaxed text-stone-700">
+          Foto recebida. Não conseguimos conferir o documento automaticamente
+          agora; a equipe vai conferir.
+        </p>
+      ) : null}
       {error ? (
         <p role="alert" className="mt-2 text-sm font-medium text-rose-700">
           {error}
