@@ -377,8 +377,9 @@ export function DocumentPhotoField({
           role="alert"
           className="mt-2 rounded-xl bg-rose-50 px-3 py-2 text-sm font-medium leading-relaxed text-rose-800"
         >
-          Não reconhecemos um documento de identidade nesta foto. Tire outra
-          foto mostrando o documento inteiro, bem iluminado e sem reflexo.
+          Não conseguimos validar o documento nesta foto. Tire outra foto
+          mostrando o documento inteiro, sem dedos ou objetos na frente, bem
+          iluminado e sem reflexo.
         </p>
       ) : null}
       {checkStatus === "nao_verificado" ? (

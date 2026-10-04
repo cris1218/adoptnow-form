@@ -75,18 +75,38 @@ RG, CIN (Carteira de Identidade Nacional), CNH (física ou digital), passaporte,
 carteira de trabalho ou carteira de conselho profissional. Frente ou verso valem.
 Reprove fotos de pessoas, animais, objetos, paisagens, capturas de tela sem documento,
 papéis em branco, desenhos, comprovantes de residência, boletos ou qualquer outro
-documento que não seja de identificação. Também reprove se a imagem estiver tão
-borrada ou escura que não dá para reconhecer o documento.
-Responda em português, com o motivo curto (até 120 caracteres).`;
+documento que não seja de identificação.
+
+Seja rigoroso com a qualidade da foto, porque a equipe precisa conseguir ler o documento:
+- fully_visible: o documento (ou a página/face mostrada) aparece inteiro, com as quatro
+  bordas dentro da imagem, sem partes cortadas.
+- unobstructed: nada cobre o documento. Dedos, mãos, objetos, adesivos, tarjas, rabiscos,
+  reflexo forte ou sombra sobre qualquer parte do documento tornam isto falso, mesmo que
+  cubram só um pedaço pequeno. Dedos segurando apenas a borda externa, sem encostar em
+  nenhum texto, foto ou campo, são aceitáveis.
+- legible: dá para ler com clareza o nome e o número do documento, e a foto do rosto
+  aparece nítida (no verso sem foto, os textos principais precisam estar legíveis).
+  Imagem borrada, escura, tremida, muito pequena ou pixelada torna isto falso.
+Responda em português, com o motivo curto (até 120 caracteres), dizendo o que está errado
+quando algum item for falso.`;
 
 const RESPONSE_SCHEMA = {
   type: "OBJECT",
   properties: {
     is_identity_document: { type: "BOOLEAN" },
+    fully_visible: { type: "BOOLEAN" },
+    unobstructed: { type: "BOOLEAN" },
+    legible: { type: "BOOLEAN" },
     document_type: { type: "STRING" },
     reason: { type: "STRING" },
   },
-  required: ["is_identity_document", "reason"],
+  required: [
+    "is_identity_document",
+    "fully_visible",
+    "unobstructed",
+    "legible",
+    "reason",
+  ],
 };
 
 function unverified(reason: string): DocumentCheckResult {
@@ -168,6 +188,9 @@ export async function checkIdentityDocument(
     const text = payload.candidates?.[0]?.content?.parts?.[0]?.text ?? "";
     const verdict = JSON.parse(text) as {
       is_identity_document?: boolean;
+      fully_visible?: boolean;
+      unobstructed?: boolean;
+      legible?: boolean;
       document_type?: string;
       reason?: string;
     };
@@ -178,12 +201,18 @@ export async function checkIdentityDocument(
       .join(" · ")
       .slice(0, 300);
 
-    if (typeof verdict.is_identity_document !== "boolean") {
+    const checks = [
+      verdict.is_identity_document,
+      verdict.fully_visible,
+      verdict.unobstructed,
+      verdict.legible,
+    ];
+    if (checks.some((value) => typeof value !== "boolean")) {
       return unverified("Resposta da verificação inválida.");
     }
 
     return {
-      status: verdict.is_identity_document ? "verificado" : "reprovado",
+      status: checks.every(Boolean) ? "verificado" : "reprovado",
       reason,
     };
   } catch (error) {
