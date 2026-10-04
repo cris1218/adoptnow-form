@@ -1,9 +1,11 @@
 "use server";
 
 import {
-  checkIdentityDocument,
+  DOCUMENT_NOT_RECOGNIZED_MESSAGE,
+  verifiedDocumentCheck,
+  verifyDocumentForForm,
   type DocumentCheckResult,
-  type DocumentCheckStatus,
+  type DocumentPhotoVerification,
 } from "@/lib/documentCheck";
 import { parseIdentityAddress } from "@/lib/identityAddress";
 import { documentPhotoError } from "@/lib/questionnaire";
@@ -125,23 +127,23 @@ export async function verifyDocumentPhoto(
   token: string,
   phoneCipher: string,
   documentPhotoUrl: string
-): Promise<DocumentCheckStatus> {
+): Promise<DocumentPhotoVerification> {
+  const denied: DocumentPhotoVerification = { status: "nao_verificado", proof: "" };
   const trimmedToken = token.trim();
   const trimmedCipher = normalizePhoneCipher(phoneCipher);
-  if (!trimmedToken || !trimmedCipher) return "nao_verificado";
+  if (!trimmedToken || !trimmedCipher) return denied;
 
   try {
     const { data, error } = await getSupabaseForCompletion().rpc(
       "get_adopter_completion_form",
       { p_token: trimmedToken, p_phone_cipher: trimmedCipher }
     );
-    if (error || !(data as RpcResult | null)?.ok) return "nao_verificado";
+    if (error || !(data as RpcResult | null)?.ok) return denied;
   } catch {
-    return "nao_verificado";
+    return denied;
   }
 
-  const result = await checkIdentityDocument(documentPhotoUrl.trim());
-  return result.status;
+  return verifyDocumentForForm(documentPhotoUrl.trim());
 }
 
 async function saveDocumentCheck(
@@ -186,6 +188,13 @@ export async function submitAdopterCompletion(
   if (fieldError) {
     return { ok: false, message: fieldError };
   }
+  const check = verifiedDocumentCheck(
+    documentPhotoUrl,
+    String(formData.get("documentCheckProof") ?? "").trim()
+  );
+  if (!check) {
+    return { ok: false, message: DOCUMENT_NOT_RECOGNIZED_MESSAGE };
+  }
   if (String(formData.get("agreedToLgpd") ?? "") !== "true") {
     return {
       ok: false,
@@ -224,7 +233,6 @@ export async function submitAdopterCompletion(
       };
     }
 
-    const check = await checkIdentityDocument(documentPhotoUrl);
     await saveDocumentCheck(token, phoneCipher, check);
 
     try {

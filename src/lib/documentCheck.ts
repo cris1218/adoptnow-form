@@ -1,3 +1,5 @@
+import { createHmac, timingSafeEqual } from "node:crypto";
+
 import { isFormDocumentUrl } from "@/lib/questionnaire";
 
 export type DocumentCheckStatus = "verificado" | "reprovado" | "nao_verificado";
@@ -6,6 +8,42 @@ export type DocumentCheckResult = {
   status: DocumentCheckStatus;
   reason: string;
 };
+
+export type DocumentPhotoVerification = {
+  status: DocumentCheckStatus;
+  proof: string;
+};
+
+export const DOCUMENT_NOT_RECOGNIZED_MESSAGE =
+  "Envie uma foto em que o documento seja reconhecido.";
+
+function proofFor(url: string): string | null {
+  const secret = process.env.GEMINI_API_KEY;
+  if (!secret) return null;
+  return createHmac("sha256", secret)
+    .update(`documento-verificado:${url}`)
+    .digest("base64url");
+}
+
+export async function verifyDocumentForForm(
+  url: string
+): Promise<DocumentPhotoVerification> {
+  const result = await checkIdentityDocument(url);
+  const proof = result.status === "verificado" ? proofFor(url) : null;
+  return { status: result.status, proof: proof ?? "" };
+}
+
+export function verifiedDocumentCheck(
+  url: string,
+  proof: string
+): DocumentCheckResult | null {
+  const expected = proofFor(url);
+  if (!expected || !proof) return null;
+  const a = Buffer.from(expected);
+  const b = Buffer.from(proof);
+  if (a.length !== b.length || !timingSafeEqual(a, b)) return null;
+  return { status: "verificado", reason: "Reconhecido automaticamente no envio da foto." };
+}
 
 const GEMINI_ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/models";
 const DEFAULT_GEMINI_MODEL = "gemini-flash-latest";

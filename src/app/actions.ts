@@ -5,8 +5,10 @@ import {
   type AvailableAdoptionCat,
 } from "@/lib/availableCats";
 import {
-  checkIdentityDocument,
-  type DocumentCheckStatus,
+  DOCUMENT_NOT_RECOGNIZED_MESSAGE,
+  verifiedDocumentCheck,
+  verifyDocumentForForm,
+  type DocumentPhotoVerification,
 } from "@/lib/documentCheck";
 import { getSupabaseServer } from "@/lib/supabase";
 import { isValidPhone, normalizePhone } from "@/lib/masks";
@@ -76,15 +78,14 @@ export async function verifyLeadDocumentPhoto(
   accessToken: string,
   accessKind: string,
   documentPhotoUrl: string
-): Promise<DocumentCheckStatus> {
+): Promise<DocumentPhotoVerification> {
   const allowed =
     accessKind === "exclusive"
       ? (await getExclusiveCatForm(accessToken)).ok
       : await getAdoptionFormAccess(accessToken);
-  if (!allowed) return "nao_verificado";
+  if (!allowed) return { status: "nao_verificado", proof: "" };
 
-  const result = await checkIdentityDocument(documentPhotoUrl.trim());
-  return result.status;
+  return verifyDocumentForForm(documentPhotoUrl.trim());
 }
 
 export async function savePotentialAdopter(
@@ -130,6 +131,14 @@ export async function savePotentialAdopter(
   const parsed = parseAnswers(formData, phone);
   if (parsed.error || !parsed.answers) {
     return { ok: false, message: parsed.error ?? "Revise as respostas." };
+  }
+
+  const documentCheck = verifiedDocumentCheck(
+    parsed.answers.documentPhotoUrl,
+    String(formData.get("documentCheckProof") ?? "").trim()
+  );
+  if (!documentCheck) {
+    return { ok: false, message: DOCUMENT_NOT_RECOGNIZED_MESSAGE };
   }
 
   try {
@@ -191,8 +200,6 @@ export async function savePotentialAdopter(
           : selectedCat?.name ?? parsed.answers.interestedCatName,
       interestedCatOther: exclusiveCat ? false : parsed.answers.interestedCatOther,
     };
-
-    const documentCheck = await checkIdentityDocument(answers.documentPhotoUrl);
 
     const { error } = await supabase
       .from("potential_adopters")

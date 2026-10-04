@@ -2,7 +2,10 @@
 
 import { useEffect, useRef, useState } from "react";
 
-import type { DocumentCheckStatus } from "@/lib/documentCheck";
+import type {
+  DocumentCheckStatus,
+  DocumentPhotoVerification,
+} from "@/lib/documentCheck";
 
 const MAX_BYTES = 10 * 1024 * 1024;
 const ACCEPT_FILES =
@@ -89,7 +92,7 @@ export function DocumentPhotoField({
   disabled?: boolean;
   required?: boolean;
   onBusyChange?: (busy: boolean) => void;
-  checkDocument?: (url: string) => Promise<DocumentCheckStatus>;
+  checkDocument?: (url: string) => Promise<DocumentPhotoVerification>;
 }) {
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -104,17 +107,26 @@ export function DocumentPhotoField({
   const [checkStatus, setCheckStatus] = useState<
     DocumentCheckStatus | "checking" | ""
   >("");
+  const [proof, setProof] = useState("");
   const [error, setError] = useState("");
 
   useEffect(() => {
     setIsMobile(isMobileDevice());
   }, []);
 
+  const validityMessage = !required
+    ? ""
+    : uploading
+      ? "Aguarde a conferência do documento."
+      : !publicUrl
+        ? "Envie a foto do documento com foto."
+        : checkDocument && !proof
+          ? "Envie uma foto em que o documento seja reconhecido."
+          : "";
+
   useEffect(() => {
-    urlInputRef.current?.setCustomValidity(
-      required && !publicUrl ? "Envie a foto do documento com foto." : ""
-    );
-  }, [required, publicUrl]);
+    urlInputRef.current?.setCustomValidity(validityMessage);
+  }, [validityMessage]);
 
   useEffect(() => {
     return () => {
@@ -144,6 +156,7 @@ export function DocumentPhotoField({
     setIsPdf(extension === "pdf");
     setPublicUrl("");
     setCheckStatus("");
+    setProof("");
     setUploading(true);
     onBusyChange?.(true);
 
@@ -154,10 +167,13 @@ export function DocumentPhotoField({
 
       if (checkDocument) {
         setCheckStatus("checking");
-        const status = await checkDocument(uploaded).catch(
-          () => "nao_verificado" as const
+        const verification = await checkDocument(uploaded).catch(
+          (): DocumentPhotoVerification => ({ status: "nao_verificado", proof: "" })
         );
-        if (seq === uploadSeq.current) setCheckStatus(status);
+        if (seq === uploadSeq.current) {
+          setCheckStatus(verification.status);
+          setProof(verification.proof);
+        }
       }
     } catch (uploadError) {
       if (seq !== uploadSeq.current) return;
@@ -185,6 +201,7 @@ export function DocumentPhotoField({
     setFileName("");
     setIsPdf(false);
     setCheckStatus("");
+    setProof("");
     setError("");
     if (cameraInputRef.current) cameraInputRef.current.value = "";
     if (fileInputRef.current) fileInputRef.current.value = "";
@@ -239,9 +256,29 @@ export function DocumentPhotoField({
         aria-hidden="true"
         className="sr-only"
       />
+      <input type="hidden" name="documentCheckProof" value={proof} />
 
       {previewUrl ? (
-        <div className="overflow-hidden rounded-2xl border border-stone-300 bg-white">
+        <div
+          className="relative overflow-hidden rounded-2xl border border-stone-300 bg-white"
+          aria-busy={uploading}
+        >
+          {uploading ? (
+            <div
+              role="status"
+              className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-3 bg-white/85 backdrop-blur-[1px]"
+            >
+              <span
+                aria-hidden="true"
+                className="h-9 w-9 animate-spin rounded-full border-4 border-stone-200 border-t-brand-dark"
+              />
+              <span className="text-sm font-semibold text-stone-700">
+                {checkStatus === "checking"
+                  ? "Conferindo o documento..."
+                  : "Enviando foto..."}
+              </span>
+            </div>
+          ) : null}
           {isPdf ? (
             <div className="px-4 py-8 text-center text-sm font-medium text-stone-600">
               PDF selecionado
@@ -330,11 +367,6 @@ export function DocumentPhotoField({
         </button>
       )}
 
-      {uploading ? (
-        <p className="mt-2 text-sm text-stone-500">
-          {checkStatus === "checking" ? "Conferindo o documento..." : "Enviando foto..."}
-        </p>
-      ) : null}
       {checkStatus === "verificado" ? (
         <p className="mt-2 rounded-xl bg-emerald-50 px-3 py-2 text-sm font-medium text-emerald-800">
           Documento reconhecido.
@@ -343,17 +375,18 @@ export function DocumentPhotoField({
       {checkStatus === "reprovado" ? (
         <p
           role="alert"
-          className="mt-2 rounded-xl bg-amber-50 px-3 py-2 text-sm font-medium leading-relaxed text-amber-950"
+          className="mt-2 rounded-xl bg-rose-50 px-3 py-2 text-sm font-medium leading-relaxed text-rose-800"
         >
           Não reconhecemos um documento de identidade nesta foto. Tire outra
-          foto mostrando o documento inteiro, bem iluminado e sem reflexo. Se
-          enviar assim mesmo, a equipe vai conferir manualmente.
+          foto mostrando o documento inteiro, bem iluminado e sem reflexo.
         </p>
       ) : null}
       {checkStatus === "nao_verificado" ? (
-        <p className="mt-2 rounded-xl bg-stone-100 px-3 py-2 text-sm font-medium leading-relaxed text-stone-700">
-          Foto recebida. Não conseguimos conferir o documento automaticamente
-          agora; a equipe vai conferir.
+        <p
+          role="alert"
+          className="mt-2 rounded-xl bg-rose-50 px-3 py-2 text-sm font-medium leading-relaxed text-rose-800"
+        >
+          Não conseguimos conferir o documento agora. Envie a foto novamente.
         </p>
       ) : null}
       {error ? (
