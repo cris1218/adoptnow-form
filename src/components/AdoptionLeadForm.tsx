@@ -30,7 +30,6 @@ import {
   type AvailableAdoptionCat,
 } from "@/lib/availableCats";
 import {
-  catNameError,
   fullNameError,
   isValidPhone,
   maskPhone,
@@ -38,6 +37,7 @@ import {
 } from "@/lib/masks";
 import {
   INTERESTED_CAT_OTHER,
+  INTERESTED_CAT_OTHER_LABEL,
   type HomeType,
   type SexPreference,
 } from "@/lib/questionnaire";
@@ -84,11 +84,6 @@ export function AdoptionLeadForm({
   );
   const [loadingCats, setLoadingCats] = useState(!lockedCat);
   const [interestedCatId, setInterestedCatId] = useState(lockedCat?.id ?? "");
-  const [otherCatName, setOtherCatName] = useState("");
-  const [otherCatNameTouched, setOtherCatNameTouched] = useState(false);
-  const otherCatNameError = catNameError(otherCatName);
-  const otherCatNameRef =
-    useValidityMessage<HTMLInputElement>(otherCatNameError);
   const [neverHadAnimals, setNeverHadAnimals] = useState(false);
   const [hadCats, setHadCats] = useState(false);
   const [hadDogs, setHadDogs] = useState(false);
@@ -389,44 +384,17 @@ export function AdoptionLeadForm({
           }))}
           fallbackOption={{
             value: INTERESTED_CAT_OTHER,
-            label: "Outros",
+            label: INTERESTED_CAT_OTHER_LABEL,
             description: "Não está na lista",
           }}
         />
         )}
         {interestedCatId === INTERESTED_CAT_OTHER ? (
-          <>
-            <input
-              ref={otherCatNameRef}
-              id="interestedCatOtherName"
-              name="interestedCatOtherName"
-              type="text"
-              required
-              maxLength={30}
-              autoCapitalize="words"
-              autoCorrect="off"
-              placeholder="Nome do gatinho (ex.: Juarez)"
-              value={otherCatName}
-              aria-invalid={
-                (otherCatNameTouched && Boolean(otherCatNameError)) || undefined
-              }
-              aria-describedby={
-                otherCatNameTouched && otherCatNameError
-                  ? "interestedCatOtherName-error"
-                  : undefined
-              }
-              onChange={(event) => setOtherCatName(event.target.value)}
-              onBlur={() => setOtherCatNameTouched(true)}
-              onInvalid={() => setOtherCatNameTouched(true)}
-              className={`mt-3 h-14 w-full rounded-2xl border bg-white px-4 text-base text-stone-900 outline-none ring-brand-light placeholder:text-stone-400 focus:ring-2 ${fieldBorderClass(
-                otherCatNameTouched && Boolean(otherCatNameError)
-              )}`}
-            />
-            <FieldError
-              id="interestedCatOtherName-error"
-              message={otherCatNameTouched ? otherCatNameError : ""}
-            />
-          </>
+          <input
+            type="hidden"
+            name="interestedCatOtherName"
+            value={INTERESTED_CAT_OTHER_LABEL}
+          />
         ) : (
           <input
             type="hidden"

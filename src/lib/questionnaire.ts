@@ -2,12 +2,13 @@ import {
   parseIdentityAddress,
   type IdentityAddress,
 } from "@/lib/identityAddress";
-import { catNameError, fullNameError, normalizeFullName } from "@/lib/masks";
+import { fullNameError, normalizeFullName } from "@/lib/masks";
 
 export type HomeType = "casa" | "apartamento";
 export type SexPreference = "femea" | "macho" | "indiferente";
 
 export const INTERESTED_CAT_OTHER = "outros";
+export const INTERESTED_CAT_OTHER_LABEL = "Outros";
 
 export type AdoptionAnswers = {
   fullName: string;
@@ -139,11 +140,9 @@ export function parseAnswers(
   const homeVideoUrl = String(formData.get("homeVideoUrl") ?? "").trim();
   const interestedCatIdRaw = String(formData.get("interestedCatId") ?? "").trim();
   const interestedCatOther = interestedCatIdRaw === INTERESTED_CAT_OTHER;
-  const interestedCatName = String(
-    formData.get(
-      interestedCatOther ? "interestedCatOtherName" : "interestedCatName"
-    ) ?? ""
-  ).trim();
+  const interestedCatName = interestedCatOther
+    ? INTERESTED_CAT_OTHER_LABEL
+    : String(formData.get("interestedCatName") ?? "").trim();
 
   const nameError = fullNameError(fullName);
   if (nameError) {
@@ -164,11 +163,6 @@ export function parseAnswers(
 
   if (!interestedCatIdRaw) {
     return { error: "Selecione o gatinho que tem interesse." };
-  }
-
-  if (interestedCatOther) {
-    const catError = catNameError(interestedCatName);
-    if (catError) return { error: catError };
   }
 
   if (!neverHadAnimals && !hadCats && !hadDogs) {
