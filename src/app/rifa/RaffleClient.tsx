@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef, useState, useTransition } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 
 import {
   lookupRaffleOrdersByPhone,
@@ -21,7 +21,6 @@ import {
 } from "@/components/FormFields";
 import {
   fullNameError,
-  isValidPhone,
   maskPhone,
   phoneError,
 } from "@/lib/masks";
@@ -95,6 +94,42 @@ function formatDrawAt(raw: string | null): string | null {
   });
 }
 
+async function copyTextToClipboard(value: string): Promise<boolean> {
+  const text = value.trim();
+  if (!text) return false;
+
+  try {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(text);
+      return true;
+    }
+  } catch {
+    // fallback abaixo
+  }
+
+  const area = document.createElement("textarea");
+  area.value = text;
+  area.setAttribute("readonly", "");
+  area.style.position = "fixed";
+  area.style.top = "0";
+  area.style.left = "0";
+  area.style.width = "1px";
+  area.style.height = "1px";
+  area.style.opacity = "0";
+  document.body.appendChild(area);
+  area.focus();
+  area.select();
+  area.setSelectionRange(0, text.length);
+  let ok = false;
+  try {
+    ok = document.execCommand("copy");
+  } catch {
+    ok = false;
+  }
+  document.body.removeChild(area);
+  return ok;
+}
+
 export function RaffleClient({
   token,
   initialRaffle,
@@ -112,13 +147,16 @@ export function RaffleClient({
   const [buyerNameTouched, setBuyerNameTouched] = useState(false);
   const [buyerPhoneTouched, setBuyerPhoneTouched] = useState(false);
   const [lookupPhone, setLookupPhone] = useState("");
-  const [lookupPhoneTouched, setLookupPhoneTouched] = useState(false);
   const [orders, setOrders] = useState<BuyerOrder[]>([]);
   const [ordersModalOpen, setOrdersModalOpen] = useState(false);
   const [activeOrder, setActiveOrder] = useState<BuyerOrder | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  const [pixCopied, setPixCopied] = useState(false);
+  const [proofSentSuccess, setProofSentSuccess] = useState(false);
   const [pending, startTransition] = useTransition();
   const proofInputRef = useRef<HTMLInputElement>(null);
+  const pixSectionRef = useRef<HTMLDivElement>(null);
+  const pixCopyPasteRef = useRef<HTMLTextAreaElement>(null);
 
   const canBuy = raffle.status === "open";
   const totalCents = selected.length * raffle.priceCents;
@@ -126,7 +164,44 @@ export function RaffleClient({
   const selectedSet = useMemo(() => new Set(selected), [selected]);
   const buyerNameError = fullNameError(buyerName);
   const buyerPhoneError = phoneError(buyerPhone);
-  const lookupPhoneError = phoneError(lookupPhone);
+
+  useEffect(() => {
+    if (!activeOrder) return;
+    setPixCopied(false);
+    const frame = window.requestAnimationFrame(() => {
+      pixSectionRef.current?.scrollIntoView({
+        behavior: "smooth",
+        block: "start",
+      });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [activeOrder?.id]);
+
+  async function handleCopyPix() {
+    const value = activeOrder?.pixCopyPaste ?? "";
+    const area = pixCopyPasteRef.current;
+    if (area) {
+      area.focus();
+      area.select();
+      area.setSelectionRange(0, value.length);
+    }
+    const ok = await copyTextToClipboard(value);
+    if (!ok && area) {
+      try {
+        const selected = document.execCommand("copy");
+        if (!selected) {
+          setMessage("Não foi possível copiar. Selecione o texto e copie manualmente.");
+          return;
+        }
+      } catch {
+        setMessage("Não foi possível copiar. Selecione o texto e copie manualmente.");
+        return;
+      }
+    }
+    setPixCopied(true);
+    setMessage("Pix copiado. Cole no app do seu banco.");
+    window.setTimeout(() => setPixCopied(false), 2500);
+  }
 
   function toggleNumber(n: PublicRaffleNumber) {
     if (!canBuy || n.status !== "available") return;
@@ -138,13 +213,8 @@ export function RaffleClient({
   }
 
   function handleLookup() {
-    setLookupPhoneTouched(true);
     setMessage(null);
     setOrdersModalOpen(false);
-    if (lookupPhoneError) {
-      setMessage(lookupPhoneError);
-      return;
-    }
     startTransition(async () => {
       const result = await lookupRaffleOrdersByPhone(token, lookupPhone);
       if (!result.ok) {
@@ -221,18 +291,17 @@ export function RaffleClient({
           setMessage(result.message || "Falha ao enviar comprovante.");
           return;
         }
-        if (result.order) setActiveOrder(result.order);
-        else {
-          setActiveOrder({
-            ...activeOrder,
-            status: "pending_review",
-            paymentProofUrl: url,
-          });
-        }
-        setMessage(
-          result.message ||
-            "Comprovante enviado. Aguarde a confirmação da equipe."
-        );
+        setActiveOrder(null);
+        setSelected([]);
+        setProofSentSuccess(true);
+        setMessage(null);
+        window.setTimeout(() => {
+          try {
+            window.close();
+          } catch {
+            // navegador pode bloquear close
+          }
+        }, 1200);
       } catch (error) {
         setMessage(
           error instanceof Error
@@ -248,6 +317,23 @@ export function RaffleClient({
     (activeOrder.status === "awaiting_payment" ||
       activeOrder.status === "pending_review") &&
     activeOrder.pixCopyPaste;
+
+  if (proofSentSuccess) {
+    return (
+      <div className="rounded-[1.75rem] border border-emerald-200 bg-emerald-50 p-6 text-center shadow-[0_18px_50px_rgba(14,90,88,0.12)]">
+        <p className="text-2xl font-bold tracking-tight text-emerald-950">
+          Comprovante enviado com sucesso
+        </p>
+        <p className="mt-3 text-base leading-relaxed text-emerald-900">
+          Recebemos seu Pix. A equipe do Recanto do Ron Ron vai confirmar e
+          liberar seus números.
+        </p>
+        <p className="mt-4 text-sm text-emerald-800">
+          Pode fechar esta página.
+        </p>
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col gap-5">
@@ -301,26 +387,19 @@ export function RaffleClient({
         <label className="mt-3 block text-sm font-medium text-stone-700">
           WhatsApp
           <input
-            className={`mt-1 w-full rounded-xl border px-3 py-3 ${fieldBorderClass(
-              lookupPhoneTouched && Boolean(lookupPhoneError)
-            )}`}
+            className="mt-1 w-full rounded-xl border border-stone-300 px-3 py-3"
             value={lookupPhone}
             onChange={(event) => setLookupPhone(maskPhone(event.target.value))}
-            onBlur={() => setLookupPhoneTouched(true)}
             inputMode="numeric"
             autoComplete="tel-national"
             placeholder="(42) 99999-9999"
           />
         </label>
-        <FieldError
-          id="lookup-phone-error"
-          message={lookupPhoneTouched ? lookupPhoneError : ""}
-        />
         <button
           type="button"
-          disabled={pending || !isValidPhone(lookupPhone)}
+          disabled={pending || lookupPhone.trim().length === 0}
           onClick={handleLookup}
-          className="mt-3 flex h-12 w-full items-center justify-center rounded-2xl bg-stone-200 text-base font-semibold text-stone-900 disabled:opacity-50"
+          className="mt-3 flex h-12 w-full cursor-pointer items-center justify-center rounded-2xl bg-stone-200 text-base font-semibold text-stone-900 disabled:cursor-not-allowed disabled:opacity-50"
         >
           Buscar meus números
         </button>
@@ -473,7 +552,10 @@ export function RaffleClient({
       ) : null}
 
       {activeOrder ? (
-        <div className="rounded-[1.75rem] border border-brand-200 bg-white p-5">
+        <div
+          ref={pixSectionRef}
+          className="scroll-mt-4 rounded-[1.75rem] border border-brand-200 bg-white p-5"
+        >
           <h2 className="text-lg font-semibold text-stone-900">
             {orderStatusLabel(activeOrder.status)}
           </h2>
@@ -499,18 +581,18 @@ export function RaffleClient({
                   Copia e cola
                 </p>
                 <textarea
+                  ref={pixCopyPasteRef}
                   readOnly
                   className="mt-1 h-28 w-full rounded-xl border border-stone-300 p-3 text-xs"
                   value={activeOrder.pixCopyPaste}
+                  onFocus={(event) => event.currentTarget.select()}
                 />
                 <button
                   type="button"
-                  className="mt-2 flex h-12 w-full items-center justify-center rounded-2xl bg-stone-200 text-base font-semibold"
-                  onClick={() =>
-                    void navigator.clipboard.writeText(activeOrder.pixCopyPaste)
-                  }
+                  className="mt-2 flex h-12 w-full items-center justify-center rounded-2xl bg-brand-dark text-base font-semibold text-white"
+                  onClick={() => void handleCopyPix()}
                 >
-                  Copiar Pix
+                  {pixCopied ? "Pix copiado!" : "Copiar Pix"}
                 </button>
               </div>
             </>
@@ -531,7 +613,7 @@ export function RaffleClient({
                 type="button"
                 disabled={pending}
                 onClick={() => proofInputRef.current?.click()}
-                className="flex h-14 w-full items-center justify-center rounded-2xl bg-brand-dark text-lg font-semibold text-white disabled:opacity-50"
+                className="flex h-14 w-full cursor-pointer items-center justify-center rounded-2xl bg-brand-dark text-lg font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {pending ? "Enviando..." : "Anexar comprovante"}
               </button>

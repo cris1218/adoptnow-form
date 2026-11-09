@@ -65,9 +65,8 @@ export async function lookupRaffleOrdersByPhone(
   phone: string
 ): Promise<{ ok: boolean; orders: BuyerOrder[]; message?: string }> {
   const normalized = normalizePhone(phone);
-  const invalidPhone = phoneError(normalized);
-  if (invalidPhone) {
-    return { ok: false, orders: [], message: invalidPhone };
+  if (phoneError(normalized)) {
+    return { ok: true, orders: [] };
   }
 
   const supabase = getSupabaseServer();
@@ -231,24 +230,45 @@ export async function submitRafflePaymentProof(input: {
       return { ok: false, message: "Não foi possível enviar o comprovante." };
     }
 
-    const lookup = await lookupRaffleOrdersByPhone(input.token, phone);
-    const order = lookup.orders.find((item) => item.id === input.orderId);
+    const { data: orderMeta, error: orderMetaError } = await admin
+      .from("raffle_orders")
+      .select("id, raffle_id, buyer_phone, raffles(id, title)")
+      .eq("id", input.orderId)
+      .maybeSingle();
+    if (orderMetaError) {
+      console.error("raffle_orders meta", orderMetaError);
+    }
+
+    const raffleJoin = orderMeta?.raffles as
+      | { id?: string; title?: string }
+      | { id?: string; title?: string }[]
+      | null
+      | undefined;
+    const raffle = Array.isArray(raffleJoin) ? raffleJoin[0] : raffleJoin;
 
     try {
-      await notifyStaffRafflePaymentProof({
+      const pushed = await notifyStaffRafflePaymentProof({
         orderId: input.orderId,
         phone,
+        raffleId: String(raffle?.id ?? orderMeta?.raffle_id ?? ""),
+        raffleTitle: String(raffle?.title ?? ""),
       });
+      if (pushed < 1) {
+        console.warn("Comprovante salvo, mas nenhum push Expo foi enviado.");
+      }
     } catch (pushError) {
       console.error("notifyStaffRafflePaymentProof", pushError);
     }
+
+    const lookup = await lookupRaffleOrdersByPhone(input.token, phone);
+    const order = lookup.orders.find((item) => item.id === input.orderId);
 
     return {
       ok: true,
       order: order
         ? { ...order, status: "pending_review", paymentProofUrl: url }
         : undefined,
-      message: "Comprovante enviado. Aguarde a confirmação.",
+      message: "Comprovante enviado com sucesso.",
     };
   } catch (error) {
     console.error("submitRafflePaymentProof", error);

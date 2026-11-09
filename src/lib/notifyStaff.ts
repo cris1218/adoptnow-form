@@ -15,13 +15,19 @@ type StaffPushMessage = {
   data: Record<string, string>;
 };
 
-async function notifyStaff(message: StaffPushMessage): Promise<void> {
+function isExpoPushToken(token: string): boolean {
+  return (
+    token.startsWith("ExponentPushToken[") || token.startsWith("ExpoPushToken[")
+  );
+}
+
+async function notifyStaff(message: StaffPushMessage): Promise<number> {
   const supabase = getSupabaseAdmin();
   if (!supabase) {
     console.warn(
       "Push não enviado: defina SUPABASE_SERVICE_ROLE_KEY no servidor."
     );
-    return;
+    return 0;
   }
 
   const { data, error } = await supabase
@@ -30,24 +36,29 @@ async function notifyStaff(message: StaffPushMessage): Promise<void> {
 
   if (error) {
     console.error("Falha ao ler push tokens:", error.message);
-    return;
+    return 0;
   }
 
   const tokens = [
     ...new Set(
       ((data ?? []) as PushTokenRow[])
         .map((row) => row.expo_push_token)
-        .filter((token) => token.startsWith("ExponentPushToken"))
+        .filter((token): token is string => Boolean(token) && isExpoPushToken(token))
     ),
   ];
 
-  if (tokens.length === 0) return;
+  if (tokens.length === 0) {
+    console.warn("Push não enviado: nenhum expo_push_token cadastrado.");
+    return 0;
+  }
 
+  let sent = 0;
   for (let index = 0; index < tokens.length; index += EXPO_BATCH_SIZE) {
     const batch = tokens.slice(index, index + EXPO_BATCH_SIZE);
     const messages = batch.map((token) => ({
       to: token,
       sound: "default" as const,
+      priority: "high" as const,
       channelId: "potential-adopters",
       title: message.title,
       body: message.body,
@@ -67,8 +78,18 @@ async function notifyStaff(message: StaffPushMessage): Promise<void> {
     if (!response.ok) {
       const text = await response.text();
       console.error(`Expo push falhou (${response.status}): ${text}`);
+      continue;
     }
+
+    sent += batch.length;
+    const payload = (await response.json().catch(() => null)) as unknown;
+    console.log("Expo push enviado", {
+      devices: batch.length,
+      payload,
+    });
   }
+
+  return sent;
 }
 
 function documentCheckNote(documentCheck: DocumentCheckStatus): string {
@@ -163,14 +184,19 @@ export async function notifyStaffKnownPersonAutoApproved(
 export async function notifyStaffRafflePaymentProof(input: {
   orderId: string;
   phone: string;
-}): Promise<void> {
-  await notifyStaff({
+  raffleId?: string;
+  raffleTitle?: string;
+}): Promise<number> {
+  const title = (input.raffleTitle ?? "").trim() || "Rifa";
+  return notifyStaff({
     title: "Comprovante de rifa",
-    body: "Alguém enviou comprovante Pix. Confira no app para confirmar ou rejeitar.",
+    body: `${title}: comprovante Pix enviado. Confirme ou rejeite no app.`,
     data: {
       type: "raffle-payment-proof",
       orderId: input.orderId,
       phone: input.phone,
+      raffleId: input.raffleId ?? "",
+      raffleTitle: title,
     },
   });
 }
