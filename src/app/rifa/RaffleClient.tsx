@@ -192,6 +192,7 @@ export function RaffleClient({
   const [alert, setAlert] = useState<SiteAlertState>(null);
   const [pixCopied, setPixCopied] = useState(false);
   const [remainingMs, setRemainingMs] = useState(0);
+  const [paymentConfirmed, setPaymentConfirmed] = useState(false);
   const [pending, startTransition] = useTransition();
   const pixSectionRef = useRef<HTMLDivElement>(null);
   const pixCopyPasteRef = useRef<HTMLTextAreaElement>(null);
@@ -215,7 +216,7 @@ export function RaffleClient({
   }
 
   useEffect(() => {
-    if (!activeOrder) return;
+    if (!activeOrder || activeOrder.status !== "awaiting_payment") return;
     setPixCopied(false);
     const frame = window.requestAnimationFrame(() => {
       pixSectionRef.current?.scrollIntoView({
@@ -224,7 +225,7 @@ export function RaffleClient({
       });
     });
     return () => window.cancelAnimationFrame(frame);
-  }, [activeOrder?.id]);
+  }, [activeOrder?.id, activeOrder?.status]);
 
   useEffect(() => {
     if (!activeOrder?.expiresAt || activeOrder.status !== "awaiting_payment") {
@@ -277,7 +278,10 @@ export function RaffleClient({
       if (result.order.status === "paid") {
         if (paidHandledRef.current === activeOrder.id) return;
         paidHandledRef.current = activeOrder.id;
-        setActiveOrder(result.order);
+        const paidPhone =
+          result.order.buyerPhone?.trim() ||
+          activeOrder.buyerPhone?.trim() ||
+          buyerPhone;
         setNumbers((current) =>
           current.map((item) =>
             result.order!.numbers.includes(item.number)
@@ -285,11 +289,20 @@ export function RaffleClient({
               : item
           )
         );
+        setActiveOrder(null);
+        setPaymentConfirmed(true);
+        if (paidPhone) setLookupPhone(maskPhone(paidPhone));
         showAlert(
           "Pagamento confirmado",
-          "Seus números estão garantidos. Boa sorte!",
+          "Seus números estão garantidos. Boa sorte no sorteio!",
           "success"
         );
+        window.requestAnimationFrame(() => {
+          lookupSectionRef.current?.scrollIntoView({
+            behavior: "smooth",
+            block: "start",
+          });
+        });
         return;
       }
 
@@ -491,6 +504,16 @@ export function RaffleClient({
         ref={lookupSectionRef}
         className="scroll-mt-4 rounded-[1.75rem] border border-white/70 bg-white/90 p-5"
       >
+        {paymentConfirmed ? (
+          <div className="mb-4 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3">
+            <p className="text-sm font-semibold text-emerald-900">
+              Pagamento confirmado. Boa sorte no sorteio!
+            </p>
+            <p className="mt-1 text-sm text-emerald-800">
+              Para ver seus números, busque pelo WhatsApp abaixo.
+            </p>
+          </div>
+        ) : null}
         <h2 className="text-lg font-semibold text-stone-900">
           Já comprou? Consulte pelo WhatsApp
         </h2>
@@ -714,7 +737,7 @@ export function RaffleClient({
         </p>
       )}
 
-      {activeOrder ? (
+      {activeOrder?.status === "awaiting_payment" ? (
         <div
           ref={pixSectionRef}
           className="scroll-mt-4 rounded-[1.75rem] border border-brand-200 bg-white p-5"
@@ -732,19 +755,17 @@ export function RaffleClient({
             {formatCentsBrl(activeOrder.totalCents)}
           </p>
 
-          {activeOrder.status === "awaiting_payment" ? (
-            <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-center">
-              <p className="text-xs font-semibold uppercase tracking-wide text-amber-800">
-                Tempo para pagar
-              </p>
-              <p className="mt-1 text-3xl font-bold tabular-nums text-amber-950">
-                {formatCountdown(remainingMs)}
-              </p>
-              <p className="mt-1 text-xs text-amber-800">
-                Sem pagamento, os números voltam a ficar livres.
-              </p>
-            </div>
-          ) : null}
+          <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-center">
+            <p className="text-xs font-semibold uppercase tracking-wide text-amber-800">
+              Tempo para pagar
+            </p>
+            <p className="mt-1 text-3xl font-bold tabular-nums text-amber-950">
+              {formatCountdown(remainingMs)}
+            </p>
+            <p className="mt-1 text-xs text-amber-800">
+              Sem pagamento, os números voltam a ficar livres.
+            </p>
+          </div>
 
           {showPix ? (
             <>
@@ -797,12 +818,6 @@ export function RaffleClient({
                 Pagou? A confirmação é automática. Pode deixar esta tela aberta.
               </p>
             </>
-          ) : null}
-
-          {activeOrder.status === "paid" ? (
-            <p className="mt-4 rounded-xl bg-emerald-50 px-3 py-2 text-sm text-emerald-900">
-              Pagamento confirmado. Boa sorte no sorteio!
-            </p>
           ) : null}
         </div>
       ) : null}
