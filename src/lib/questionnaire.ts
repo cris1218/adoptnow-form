@@ -294,7 +294,9 @@ export function parseAnswers(
       agreedToCosts,
       agreedToResponsibilityTerm,
       agreedHomeSafe,
-      willSendVideoWhatsapp: requireHomeVideo ? willSendVideoWhatsapp : false,
+      willSendVideoWhatsapp: requireHomeVideo
+        ? willSendVideoWhatsapp
+        : true,
       homeVideoUrl:
         requireHomeVideo && !willSendVideoWhatsapp ? homeVideoUrl : "",
       identity,

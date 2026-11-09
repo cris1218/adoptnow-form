@@ -341,14 +341,11 @@ export async function savePotentialAdopter(
       interestedCatOther: exclusiveCat ? false : parsed.answers.interestedCatOther,
     };
 
-    const insertClient =
-      skipHomeVideo || skipDocumentPhoto
-        ? getSupabaseAdmin() ?? supabase
-        : supabase;
+    const insertClient = getSupabaseAdmin() ?? supabase;
 
-    if ((skipHomeVideo || skipDocumentPhoto) && insertClient === supabase) {
+    if (insertClient === supabase) {
       console.warn(
-        "Pessoa conhecida sem SUPABASE_SERVICE_ROLE_KEY; insert pode falhar na política do vídeo."
+        "SUPABASE_SERVICE_ROLE_KEY ausente; insert usa anon e depende da policy do formulário."
       );
     }
 
@@ -367,6 +364,16 @@ export async function savePotentialAdopter(
       }
       if (message.includes("Não é possível se cadastrar")) {
         return { ok: false, message: CPF_DENIED_MESSAGE };
+      }
+      if (
+        message.includes("row-level security") ||
+        message.includes("permission denied")
+      ) {
+        return {
+          ok: false,
+          message:
+            "Não foi possível salvar o cadastro. Confira o vídeo do lar (ou a opção de enviar pelo WhatsApp) e tente de novo.",
+        };
       }
       return {
         ok: false,
