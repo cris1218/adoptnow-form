@@ -79,6 +79,60 @@ function formatCountdown(remainingMs: number): string {
   return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
 }
 
+function RafflePhotoCarousel({ urls }: { urls: string[] }) {
+  const [index, setIndex] = useState(0);
+  const count = urls.length;
+
+  useEffect(() => {
+    setIndex(0);
+  }, [urls]);
+
+  useEffect(() => {
+    if (count < 2) return;
+    const id = window.setInterval(() => {
+      setIndex((current) => (current + 1) % count);
+    }, 5000);
+    return () => window.clearInterval(id);
+  }, [count, urls]);
+
+  if (count < 1) return null;
+
+  return (
+    <div className="relative overflow-hidden rounded-[1.75rem] border border-white/70 bg-stone-100 shadow-[0_18px_50px_rgba(14,90,88,0.12)]">
+      <div className="relative aspect-[4/3] w-full sm:aspect-[16/10]">
+        {urls.map((url, i) => (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            key={url}
+            src={url}
+            alt=""
+            className={`absolute inset-0 h-full w-full object-cover transition-opacity duration-700 ease-out ${
+              i === index ? "opacity-100" : "opacity-0"
+            }`}
+          />
+        ))}
+      </div>
+      {count > 1 ? (
+        <div className="absolute inset-x-0 bottom-3 flex items-center justify-center gap-1.5">
+          {urls.map((url, i) => (
+            <button
+              key={url}
+              type="button"
+              aria-label={`Foto ${i + 1}`}
+              className={`h-2 rounded-full transition-all ${
+                i === index
+                  ? "w-5 bg-white shadow"
+                  : "w-2 bg-white/60 hover:bg-white/90"
+              }`}
+              onClick={() => setIndex(i)}
+            />
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 async function copyTextToClipboard(value: string): Promise<boolean> {
   const text = value.trim();
   if (!text) return false;
@@ -395,17 +449,7 @@ export function RaffleClient({
   return (
     <div className="flex flex-col gap-5">
       {raffle.photoUrls.length > 0 ? (
-        <div className="flex gap-2 overflow-x-auto pb-1">
-          {raffle.photoUrls.map((url) => (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              key={url}
-              src={url}
-              alt=""
-              className="h-40 w-40 shrink-0 rounded-2xl object-cover"
-            />
-          ))}
-        </div>
+        <RafflePhotoCarousel urls={raffle.photoUrls} />
       ) : null}
 
       <div className="rounded-[1.75rem] border border-white/70 bg-white/90 p-5 shadow-[0_18px_50px_rgba(14,90,88,0.12)]">
