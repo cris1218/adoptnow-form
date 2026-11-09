@@ -3,7 +3,6 @@ export type RaffleNumberStatus = "available" | "reserved" | "paid";
 
 export type RaffleOrderStatus =
   | "awaiting_payment"
-  | "pending_review"
   | "paid"
   | "rejected"
   | "expired";

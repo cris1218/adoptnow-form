@@ -1,6 +1,6 @@
 "use server";
 
-import { buildPixCopyPaste, buildPixQrBase64 } from "@/lib/pixBrCode";
+import { createPixPayment } from "@/lib/mercadopago";
 import {
   mapBuyerOrders,
   mapPublicNumbers,
@@ -15,7 +15,6 @@ import {
   normalizePhone,
   phoneError,
 } from "@/lib/masks";
-import { notifyStaffRafflePaymentProof } from "@/lib/notifyStaff";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { getSupabaseServer } from "@/lib/supabase";
 
@@ -133,36 +132,60 @@ export async function purchaseRaffleNumbers(input: {
       expires_at?: string;
       buyer_name?: string;
       buyer_phone?: string;
-      pix_key?: string;
       title?: string;
     } | null;
 
-    if (!reserved?.ok || !reserved.order_id || !reserved.pix_key) {
+    if (!reserved?.ok || !reserved.order_id) {
       return { ok: false, message: "Não foi possível reservar os números." };
     }
 
-    const pixCopyPaste = buildPixCopyPaste({
-      pixKey: reserved.pix_key,
-      amountCents: Number(reserved.total_cents ?? 0),
-      description: `RIFA${String(reserved.order_id).replace(/-/g, "").slice(0, 20)}`,
-    });
-    const pixQrBase64 = await buildPixQrBase64(pixCopyPaste);
+    const totalCents = Number(reserved.total_cents ?? 0);
+    const title = String(reserved.title ?? "Rifa");
 
-    const { error: attachError } = await admin.rpc(
-      "attach_raffle_order_pix_static",
-      {
-        p_order_id: reserved.order_id,
-        p_pix_copy_paste: pixCopyPaste,
+    const releaseReservedOrder = async () => {
+      try {
+        await admin
+          .from("raffle_orders")
+          .update({ expires_at: "1970-01-01T00:00:00" })
+          .eq("id", reserved.order_id)
+          .eq("status", "awaiting_payment");
+        await admin.rpc("release_expired_raffle_orders", {
+          p_raffle_id: null,
+        });
+      } catch (releaseError) {
+        console.error("release after pix failure", releaseError);
       }
-    );
+    };
+
+    let pix;
+    try {
+      pix = await createPixPayment({
+        orderId: reserved.order_id,
+        amountCents: totalCents,
+        description: `${title} · números ${(reserved.numbers ?? input.numbers).join(",")}`,
+        buyerPhone: phone,
+        expirationMinutes: 5,
+      });
+    } catch (pixError) {
+      await releaseReservedOrder();
+      throw pixError;
+    }
+
+    const { error: attachError } = await admin.rpc("attach_raffle_order_pix", {
+      p_order_id: reserved.order_id,
+      p_mp_payment_id: pix.id,
+      p_pix_copy_paste: pix.qrCode,
+      p_pix_qr_base64: pix.qrCodeBase64,
+    });
 
     if (attachError) {
-      console.error("attach_raffle_order_pix_static", attachError);
+      console.error("attach_raffle_order_pix", attachError);
+      await releaseReservedOrder();
       return {
         ok: false,
         message:
           attachError.message ||
-          "Reserva ok, mas falhou ao montar o Pix. Fale conosco.",
+          "Não foi possível montar o Pix. Tente de novo.",
       };
     }
 
@@ -172,9 +195,9 @@ export async function purchaseRaffleNumbers(input: {
         id: reserved.order_id,
         status: "awaiting_payment",
         numbers: reserved.numbers ?? input.numbers,
-        totalCents: Number(reserved.total_cents ?? 0),
-        pixCopyPaste,
-        pixQrBase64,
+        totalCents,
+        pixCopyPaste: pix.qrCode,
+        pixQrBase64: pix.qrCodeBase64,
         paymentProofUrl: "",
         expiresAt: reserved.expires_at ?? null,
         paidAt: null,
@@ -195,137 +218,69 @@ export async function purchaseRaffleNumbers(input: {
   }
 }
 
-export async function submitRafflePaymentProof(input: {
+export async function getRaffleOrderPaymentStatus(input: {
   token: string;
   orderId: string;
-  buyerPhone: string;
-  paymentProofUrl: string;
-}): Promise<{ ok: boolean; message?: string; order?: BuyerOrder }> {
-  const url = input.paymentProofUrl.trim();
-  if (!url) {
-    return { ok: false, message: "Anexe o comprovante." };
-  }
-  if (!input.orderId) {
-    return { ok: false, message: "Pedido inválido. Gere o Pix novamente." };
-  }
-
+}): Promise<{
+  ok: boolean;
+  status?: BuyerOrder["status"];
+  message?: string;
+  order?: BuyerOrder;
+}> {
   try {
     const admin = adminOrThrow();
-    const token = input.token.trim();
+    await admin.rpc("release_expired_raffle_orders", {
+      p_raffle_id: null,
+    });
 
-    const { data: orderRow, error: orderError } = await admin
+    const { data: orderRow, error } = await admin
       .from("raffle_orders")
       .select(
-        "id, raffle_id, buyer_name, buyer_phone, numbers, total_cents, status, expires_at, paid_at, created_at, pix_copy_paste, pix_qr_base64"
+        "id, raffle_id, buyer_name, buyer_phone, numbers, total_cents, status, expires_at, paid_at, created_at, pix_copy_paste, pix_qr_base64, payment_proof_url"
       )
       .eq("id", input.orderId)
       .maybeSingle();
 
-    if (orderError) {
-      console.error("submitRafflePaymentProof order", orderError);
-      return {
-        ok: false,
-        message: orderError.message || "Não foi possível localizar o pedido.",
-      };
-    }
-    if (!orderRow) {
+    if (error || !orderRow) {
       return { ok: false, message: "Pedido não encontrado." };
     }
 
-    const { data: raffle, error: raffleError } = await admin
+    const { data: raffle } = await admin
       .from("raffles")
-      .select("id, title, public_token")
+      .select("public_token")
       .eq("id", orderRow.raffle_id)
       .maybeSingle();
 
-    if (raffleError) {
-      console.error("submitRafflePaymentProof raffle", raffleError);
-      return {
-        ok: false,
-        message: raffleError.message || "Não foi possível localizar a rifa.",
-      };
-    }
-    if (!raffle?.public_token || raffle.public_token !== token) {
+    if (!raffle?.public_token || raffle.public_token !== input.token.trim()) {
       return { ok: false, message: "Pedido não pertence a esta rifa." };
     }
 
-    const orderPhone = normalizePhone(String(orderRow.buyer_phone ?? ""));
-    const clientPhone = normalizePhone(input.buyerPhone);
-    const phone = clientPhone || orderPhone;
-    if (!phone) {
-      return { ok: false, message: "Informe o WhatsApp usado na compra." };
-    }
-    if (clientPhone && clientPhone !== orderPhone) {
-      return {
-        ok: false,
-        message: "Este pedido não pertence a este WhatsApp.",
-      };
-    }
-
-    const { data, error } = await admin.rpc("attach_raffle_order_payment_proof", {
-      p_token: token,
-      p_order_id: input.orderId,
-      p_phone: phone,
-      p_payment_proof_url: url,
-    });
-
-    if (error) {
-      console.error("attach_raffle_order_payment_proof", error);
-      return {
-        ok: false,
-        message: error.message || "Não foi possível enviar o comprovante.",
-      };
-    }
-
-    const payload = data as { ok?: boolean; status?: string } | null;
-    if (!payload?.ok) {
-      return { ok: false, message: "Não foi possível enviar o comprovante." };
-    }
-
-    try {
-      const pushed = await notifyStaffRafflePaymentProof({
-        orderId: input.orderId,
-        phone: orderPhone || phone,
-        raffleId: String(raffle.id ?? orderRow.raffle_id ?? ""),
-        raffleTitle: String(raffle.title ?? ""),
-      });
-      if (pushed < 1) {
-        console.warn("Comprovante salvo, mas nenhum push Expo foi enviado.");
-      }
-    } catch (pushError) {
-      console.error("notifyStaffRafflePaymentProof", pushError);
-    }
-
-    return {
-      ok: true,
-      order: {
-        id: String(orderRow.id),
-        status: "pending_review",
-        numbers: Array.isArray(orderRow.numbers)
-          ? (orderRow.numbers as number[])
-          : [],
-        totalCents: Number(orderRow.total_cents ?? 0),
-        pixCopyPaste: String(orderRow.pix_copy_paste ?? ""),
-        pixQrBase64: String(orderRow.pix_qr_base64 ?? ""),
-        paymentProofUrl: url,
-        expiresAt:
-          orderRow.expires_at == null ? null : String(orderRow.expires_at),
-        paidAt: orderRow.paid_at == null ? null : String(orderRow.paid_at),
-        createdAt:
-          orderRow.created_at == null ? null : String(orderRow.created_at),
-        buyerPhone: orderPhone || phone,
-        buyerName: String(orderRow.buyer_name ?? ""),
-      },
-      message: "Comprovante enviado com sucesso.",
+    const order: BuyerOrder = {
+      id: String(orderRow.id),
+      status: orderRow.status as BuyerOrder["status"],
+      numbers: Array.isArray(orderRow.numbers)
+        ? (orderRow.numbers as number[])
+        : [],
+      totalCents: Number(orderRow.total_cents ?? 0),
+      pixCopyPaste: String(orderRow.pix_copy_paste ?? ""),
+      pixQrBase64: String(orderRow.pix_qr_base64 ?? ""),
+      paymentProofUrl: String(orderRow.payment_proof_url ?? ""),
+      expiresAt:
+        orderRow.expires_at == null ? null : String(orderRow.expires_at),
+      paidAt: orderRow.paid_at == null ? null : String(orderRow.paid_at),
+      createdAt:
+        orderRow.created_at == null ? null : String(orderRow.created_at),
+      buyerPhone: String(orderRow.buyer_phone ?? ""),
+      buyerName: String(orderRow.buyer_name ?? ""),
     };
+
+    return { ok: true, status: order.status, order };
   } catch (error) {
-    console.error("submitRafflePaymentProof", error);
+    console.error("getRaffleOrderPaymentStatus", error);
     return {
       ok: false,
       message:
-        error instanceof Error
-          ? error.message
-          : "Não foi possível enviar o comprovante.",
+        error instanceof Error ? error.message : "Falha ao consultar pedido.",
     };
   }
 }

@@ -28,24 +28,27 @@ function siteUrl(): string {
   );
 }
 
-export async function createPixPayment(input: {
+async function postPixPayment(input: {
   orderId: string;
-  amountCents: number;
+  amount: number;
   description: string;
   buyerPhone: string;
-}): Promise<MercadoPagoPixPayment> {
-  const amount = Number((input.amountCents / 100).toFixed(2));
+  expirationMinutes: number;
+  idempotencyKey: string;
+}): Promise<{ ok: true; payment: MercadoPagoPixPayment } | { ok: false; message: string }> {
+  const expires = new Date(Date.now() + input.expirationMinutes * 60_000);
   const response = await fetch(`${MP_API}/v1/payments`, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${accessToken()}`,
       "Content-Type": "application/json",
-      "X-Idempotency-Key": input.orderId,
+      "X-Idempotency-Key": input.idempotencyKey,
     },
     body: JSON.stringify({
-      transaction_amount: amount,
+      transaction_amount: input.amount,
       description: input.description.slice(0, 200),
       payment_method_id: "pix",
+      date_of_expiration: expires.toISOString(),
       payer: {
         email: technicalPayerEmail(input.buyerPhone),
       },
@@ -56,11 +59,13 @@ export async function createPixPayment(input: {
 
   const payload = (await response.json()) as Record<string, unknown>;
   if (!response.ok) {
-    const message =
-      typeof payload.message === "string"
-        ? payload.message
-        : `Mercado Pago ${response.status}`;
-    throw new Error(message);
+    return {
+      ok: false,
+      message:
+        typeof payload.message === "string"
+          ? payload.message
+          : `Mercado Pago ${response.status}`,
+    };
   }
 
   const tx = payload.point_of_interaction as
@@ -70,17 +75,58 @@ export async function createPixPayment(input: {
   const qrCodeBase64 = tx?.transaction_data?.qr_code_base64 ?? "";
 
   if (!qrCode) {
-    throw new Error("Mercado Pago não retornou o Pix.");
+    return { ok: false, message: "Mercado Pago não retornou o Pix." };
   }
 
   return {
-    id: String(payload.id ?? ""),
-    status: String(payload.status ?? ""),
-    transactionAmount: Number(payload.transaction_amount ?? 0),
-    externalReference: String(payload.external_reference ?? ""),
-    qrCode,
-    qrCodeBase64,
+    ok: true,
+    payment: {
+      id: String(payload.id ?? ""),
+      status: String(payload.status ?? ""),
+      transactionAmount: Number(payload.transaction_amount ?? 0),
+      externalReference: String(payload.external_reference ?? ""),
+      qrCode,
+      qrCodeBase64,
+    },
   };
+}
+
+export async function createPixPayment(input: {
+  orderId: string;
+  amountCents: number;
+  description: string;
+  buyerPhone: string;
+  /** Minutos até o Pix expirar no MP (padrão 5; DB libera em 5). */
+  expirationMinutes?: number;
+}): Promise<MercadoPagoPixPayment> {
+  const amount = Number((input.amountCents / 100).toFixed(2));
+  const minutes = Math.max(5, Math.min(input.expirationMinutes ?? 5, 60 * 24));
+
+  const first = await postPixPayment({
+    orderId: input.orderId,
+    amount,
+    description: input.description,
+    buyerPhone: input.buyerPhone,
+    expirationMinutes: minutes,
+    idempotencyKey: input.orderId,
+  });
+  if (first.ok) return first.payment;
+
+  // Contas MP às vezes rejeitam expiração curta; tenta 30 min (site/DB ainda cortam em 5).
+  if (minutes < 30) {
+    const second = await postPixPayment({
+      orderId: input.orderId,
+      amount,
+      description: input.description,
+      buyerPhone: input.buyerPhone,
+      expirationMinutes: 30,
+      idempotencyKey: `${input.orderId}:30m`,
+    });
+    if (second.ok) return second.payment;
+    throw new Error(second.message);
+  }
+
+  throw new Error(first.message);
 }
 
 export async function fetchMercadoPagoPayment(

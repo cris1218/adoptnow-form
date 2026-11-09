@@ -21,6 +21,11 @@ function isExpoPushToken(token: string): boolean {
   );
 }
 
+function channelForType(type: string): string {
+  if (type === "raffle-paid" || type.startsWith("raffle-")) return "raffles";
+  return "potential-adopters";
+}
+
 async function notifyStaff(message: StaffPushMessage): Promise<number> {
   const supabase = getSupabaseAdmin();
   if (!supabase) {
@@ -59,7 +64,7 @@ async function notifyStaff(message: StaffPushMessage): Promise<number> {
       to: token,
       sound: "default" as const,
       priority: "high" as const,
-      channelId: "potential-adopters",
+      channelId: channelForType(message.data.type),
       title: message.title,
       body: message.body,
       data: message.data,
@@ -98,6 +103,13 @@ function documentCheckNote(documentCheck: DocumentCheckStatus): string {
     return " A foto enviada não parece um documento. Confira.";
   }
   return " Não foi possível conferir o documento automaticamente.";
+}
+
+function formatCentsBrl(cents: number): string {
+  return (cents / 100).toLocaleString("pt-BR", {
+    style: "currency",
+    currency: "BRL",
+  });
 }
 
 export async function notifyStaffExclusiveCatInterest(
@@ -181,22 +193,27 @@ export async function notifyStaffKnownPersonAutoApproved(
   });
 }
 
-export async function notifyStaffRafflePaymentProof(input: {
+export async function notifyStaffRafflePaid(input: {
+  raffleId: string;
   orderId: string;
-  phone: string;
-  raffleId?: string;
-  raffleTitle?: string;
+  raffleTitle: string;
+  buyerName: string;
+  numbers: number[];
+  totalCents: number;
 }): Promise<number> {
-  const title = (input.raffleTitle ?? "").trim() || "Rifa";
+  const buyer = input.buyerName.trim() || "Alguém";
+  const title = input.raffleTitle.trim() || "Rifa";
+  const numbers = input.numbers.length > 0 ? input.numbers.join(", ") : "—";
+
   return notifyStaff({
-    title: "Comprovante de rifa",
-    body: `${title}: comprovante Pix enviado. Confirme ou rejeite no app.`,
+    title: "Rifa paga",
+    body: `${buyer} pagou ${formatCentsBrl(input.totalCents)} na rifa "${title}" (nº ${numbers}).`,
     data: {
-      type: "raffle-payment-proof",
+      type: "raffle-paid",
+      raffleId: input.raffleId,
       orderId: input.orderId,
-      phone: input.phone,
-      raffleId: input.raffleId ?? "",
       raffleTitle: title,
+      buyerName: buyer,
     },
   });
 }

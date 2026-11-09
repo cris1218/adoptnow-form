@@ -3,9 +3,9 @@
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 
 import {
+  getRaffleOrderPaymentStatus,
   lookupRaffleOrdersByPhone,
   purchaseRaffleNumbers,
-  submitRafflePaymentProof,
 } from "@/app/rifa/actions";
 import { SiteAlert, type SiteAlertState } from "@/components/SiteAlert";
 import { pixQrImageUrl } from "@/lib/pixBrCode";
@@ -35,7 +35,6 @@ function cellClass(status: RaffleNumberStatus, selected: boolean) {
 
 function orderStatusLabel(status: BuyerOrder["status"]): string {
   if (status === "paid") return "Pago";
-  if (status === "pending_review") return "Em análise";
   if (status === "awaiting_payment") return "Aguardando Pix";
   if (status === "rejected") return "Rejeitado";
   return "Expirado";
@@ -43,60 +42,9 @@ function orderStatusLabel(status: BuyerOrder["status"]): string {
 
 function orderStatusBadgeClass(status: BuyerOrder["status"]): string {
   if (status === "paid") return "bg-emerald-100 text-emerald-900";
-  if (status === "pending_review") return "bg-amber-100 text-amber-900";
   if (status === "awaiting_payment") return "bg-sky-100 text-sky-900";
   if (status === "rejected") return "bg-rose-100 text-rose-900";
   return "bg-stone-100 text-stone-700";
-}
-
-async function uploadProof(file: File): Promise<string> {
-  const name = file.name.toLowerCase();
-  const type = file.type.toLowerCase();
-  let extension = "jpg";
-  if (name.endsWith(".png") || type === "image/png") extension = "png";
-  else if (name.endsWith(".webp") || type === "image/webp") extension = "webp";
-  else if (name.endsWith(".heic") || type === "image/heic" || type === "image/heif") {
-    extension = "heic";
-  } else if (name.endsWith(".pdf") || type === "application/pdf") {
-    extension = "pdf";
-  }
-
-  const contentType =
-    file.type ||
-    (extension === "pdf"
-      ? "application/pdf"
-      : extension === "heic"
-        ? "image/heic"
-        : "image/jpeg");
-
-  const presignResponse = await fetch("/api/document-presign", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      extension,
-      contentType,
-      size: file.size,
-    }),
-  });
-  const presign = (await presignResponse.json()) as {
-    uploadUrl?: string;
-    publicUrl?: string;
-    headers?: Record<string, string>;
-    error?: string;
-  };
-  if (!presignResponse.ok || !presign.uploadUrl || !presign.publicUrl) {
-    throw new Error(presign.error ?? "Falha ao preparar o envio.");
-  }
-
-  const uploadResponse = await fetch(presign.uploadUrl, {
-    method: "PUT",
-    headers: presign.headers ?? { "Content-Type": contentType },
-    body: file,
-  });
-  if (!uploadResponse.ok) {
-    throw new Error("Falha ao enviar o comprovante.");
-  }
-  return presign.publicUrl;
 }
 
 function formatDrawAt(raw: string | null): string | null {
@@ -110,6 +58,25 @@ function formatDrawAt(raw: string | null): string | null {
     hour: "2-digit",
     minute: "2-digit",
   });
+}
+
+function parseExpiresAtMs(value: string | null): number | null {
+  if (!value) return null;
+  const raw = value.trim().replace(" ", "T");
+  if (!raw) return null;
+  if (/[zZ]|[+-]\d{2}:?\d{2}$/.test(raw)) {
+    const ms = new Date(raw).getTime();
+    return Number.isNaN(ms) ? null : ms;
+  }
+  const ms = new Date(`${raw}-03:00`).getTime();
+  return Number.isNaN(ms) ? null : ms;
+}
+
+function formatCountdown(remainingMs: number): string {
+  const totalSec = Math.max(0, Math.ceil(remainingMs / 1000));
+  const minutes = Math.floor(totalSec / 60);
+  const seconds = totalSec % 60;
+  return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
 }
 
 async function copyTextToClipboard(value: string): Promise<boolean> {
@@ -170,14 +137,13 @@ export function RaffleClient({
   const [activeOrder, setActiveOrder] = useState<BuyerOrder | null>(null);
   const [alert, setAlert] = useState<SiteAlertState>(null);
   const [pixCopied, setPixCopied] = useState(false);
-  const [proofSentSuccess, setProofSentSuccess] = useState(false);
-  const [proofFile, setProofFile] = useState<File | null>(null);
-  const [proofUploading, setProofUploading] = useState(false);
+  const [remainingMs, setRemainingMs] = useState(0);
   const [pending, startTransition] = useTransition();
-  const proofInputRef = useRef<HTMLInputElement>(null);
   const pixSectionRef = useRef<HTMLDivElement>(null);
   const pixCopyPasteRef = useRef<HTMLTextAreaElement>(null);
   const lookupSectionRef = useRef<HTMLDivElement>(null);
+  const expiredHandledRef = useRef<string | null>(null);
+  const paidHandledRef = useRef<string | null>(null);
 
   const canBuy = raffle.status === "open";
   const totalCents = selected.length * raffle.priceCents;
@@ -197,8 +163,6 @@ export function RaffleClient({
   useEffect(() => {
     if (!activeOrder) return;
     setPixCopied(false);
-    setProofFile(null);
-    setProofUploading(false);
     const frame = window.requestAnimationFrame(() => {
       pixSectionRef.current?.scrollIntoView({
         behavior: "smooth",
@@ -207,6 +171,97 @@ export function RaffleClient({
     });
     return () => window.cancelAnimationFrame(frame);
   }, [activeOrder?.id]);
+
+  useEffect(() => {
+    if (!activeOrder?.expiresAt || activeOrder.status !== "awaiting_payment") {
+      setRemainingMs(0);
+      return;
+    }
+
+    const tick = () => {
+      const end = parseExpiresAtMs(activeOrder.expiresAt);
+      if (end == null) {
+        setRemainingMs(0);
+        return;
+      }
+      setRemainingMs(Math.max(0, end - Date.now()));
+    };
+
+    tick();
+    const id = window.setInterval(tick, 250);
+    return () => window.clearInterval(id);
+  }, [activeOrder?.id, activeOrder?.expiresAt, activeOrder?.status]);
+
+  useEffect(() => {
+    if (!activeOrder || activeOrder.status !== "awaiting_payment") return;
+    const end = parseExpiresAtMs(activeOrder.expiresAt);
+    // Evita falso "tempo esgotado" enquanto remainingMs ainda é 0 no mount.
+    if (end == null || Date.now() < end) return;
+    if (expiredHandledRef.current === activeOrder.id) return;
+    expiredHandledRef.current = activeOrder.id;
+
+    showAlert(
+      "Tempo esgotado",
+      "Os números voltaram a ficar livres. Escolha de novo e gere outro Pix.",
+      "error"
+    );
+    setActiveOrder(null);
+    window.setTimeout(() => window.location.reload(), 900);
+  }, [remainingMs, activeOrder?.id, activeOrder?.status, activeOrder?.expiresAt]);
+
+  useEffect(() => {
+    if (!activeOrder || activeOrder.status !== "awaiting_payment") return;
+
+    let cancelled = false;
+    const poll = async () => {
+      const result = await getRaffleOrderPaymentStatus({
+        token,
+        orderId: activeOrder.id,
+      });
+      if (cancelled || !result.ok || !result.order) return;
+
+      if (result.order.status === "paid") {
+        if (paidHandledRef.current === activeOrder.id) return;
+        paidHandledRef.current = activeOrder.id;
+        setActiveOrder(result.order);
+        setNumbers((current) =>
+          current.map((item) =>
+            result.order!.numbers.includes(item.number)
+              ? { ...item, status: "paid" }
+              : item
+          )
+        );
+        showAlert(
+          "Pagamento confirmado",
+          "Seus números estão garantidos. Boa sorte!",
+          "success"
+        );
+        return;
+      }
+
+      if (
+        result.order.status === "expired" ||
+        result.order.status === "rejected"
+      ) {
+        if (expiredHandledRef.current === activeOrder.id) return;
+        expiredHandledRef.current = activeOrder.id;
+        showAlert(
+          "Pedido encerrado",
+          "Os números voltaram a ficar livres.",
+          "error"
+        );
+        setActiveOrder(null);
+        window.setTimeout(() => window.location.reload(), 900);
+      }
+    };
+
+    void poll();
+    const id = window.setInterval(() => void poll(), 4000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(id);
+    };
+  }, [activeOrder?.id, activeOrder?.status, token]);
 
   async function handleCopyPix() {
     const value = activeOrder?.pixCopyPaste ?? "";
@@ -219,8 +274,8 @@ export function RaffleClient({
     const ok = await copyTextToClipboard(value);
     if (!ok && area) {
       try {
-        const selected = document.execCommand("copy");
-        if (!selected) {
+        const selectedText = document.execCommand("copy");
+        if (!selectedText) {
           showAlert(
             "Não foi possível copiar",
             "Selecione o texto e copie manualmente.",
@@ -252,35 +307,31 @@ export function RaffleClient({
   }
 
   function handleLookup() {
-    setOrdersModalOpen(false);
     startTransition(async () => {
       const result = await lookupRaffleOrdersByPhone(token, lookupPhone);
       if (!result.ok) {
-        setOrders([]);
         showAlert(
-          "Consulta indisponível",
-          result.message || "Não foi possível buscar os números agora.",
+          "Consulta",
+          result.message || "Falha ao buscar pedidos.",
           "error"
+        );
+        return;
+      }
+      if (result.orders.length === 0) {
+        showAlert(
+          "Nada encontrado",
+          "Não achamos compra com este WhatsApp nesta rifa.",
+          "info"
         );
         return;
       }
       setOrders(result.orders);
-      if (result.orders.length === 0) {
-        showAlert(
-          "Nenhum número encontrado",
-          "Nenhum número comprado para esse celular.",
-          "error"
-        );
-        return;
-      }
       setOrdersModalOpen(true);
     });
   }
 
   function canOpenOrderFromModal(order: BuyerOrder) {
-    return (
-      order.status === "awaiting_payment" || order.status === "pending_review"
-    );
+    return order.status === "awaiting_payment";
   }
 
   function openOrderFromModal(order: BuyerOrder) {
@@ -330,82 +381,16 @@ export function RaffleClient({
       );
       showAlert(
         "Pix gerado",
-        "Pague em até 30 minutos e anexe o comprovante.",
+        "Pague em até 5 minutos. A confirmação é automática.",
         "success"
       );
-    });
-  }
-
-  function handleProofFilePicked(file: File | null) {
-    if (!file) return;
-    setProofFile(file);
-  }
-
-  function handleSendProof() {
-    if (!proofFile || !activeOrder) return;
-    setProofUploading(true);
-    const orderId = activeOrder.id;
-    const phoneForProof =
-      activeOrder.buyerPhone || buyerPhone || lookupPhone;
-    const file = proofFile;
-    startTransition(async () => {
-      try {
-        const url = await uploadProof(file);
-        const result = await submitRafflePaymentProof({
-          token,
-          orderId,
-          buyerPhone: phoneForProof,
-          paymentProofUrl: url,
-        });
-        if (!result.ok) {
-          const failMessage =
-            result.message || "Falha ao enviar comprovante.";
-          setProofUploading(false);
-          showAlert("Envio não concluído", failMessage, "error");
-          return;
-        }
-        const successPhone = phoneForProof;
-        setActiveOrder(null);
-        setSelected([]);
-        setProofFile(null);
-        setProofUploading(false);
-        setProofSentSuccess(true);
-        if (successPhone) {
-          setLookupPhone(maskPhone(successPhone));
-        }
-        showAlert(
-          "Comprovante anexado",
-          "Comprovante anexado com sucesso. Busque pelo WhatsApp para ver seus números.",
-          "success"
-        );
-        window.setTimeout(() => {
-          lookupSectionRef.current?.scrollIntoView({
-            behavior: "smooth",
-            block: "start",
-          });
-        }, 150);
-      } catch (error) {
-        const failMessage =
-          error instanceof Error
-            ? error.message
-            : "Falha ao enviar comprovante.";
-        setProofUploading(false);
-        showAlert("Envio não concluído", failMessage, "error");
-      } finally {
-        if (proofInputRef.current) {
-          proofInputRef.current.value = "";
-        }
-      }
     });
   }
 
   const showPix =
     Boolean(activeOrder) &&
     activeOrder?.status === "awaiting_payment" &&
-    Boolean(activeOrder.pixCopyPaste) &&
-    !proofFile &&
-    !proofUploading &&
-    !proofSentSuccess;
+    Boolean(activeOrder.pixCopyPaste);
 
   return (
     <div className="flex flex-col gap-5">
@@ -455,11 +440,6 @@ export function RaffleClient({
                 Ganhador: {raffle.winnerName}
               </p>
             ) : null}
-            {raffle.drawnNumber != null ? (
-              <p className="mt-0.5 text-sm text-emerald-800">
-                Número sorteado: {raffle.drawnNumber}
-              </p>
-            ) : null}
           </div>
         ) : null}
       </div>
@@ -471,12 +451,6 @@ export function RaffleClient({
         <h2 className="text-lg font-semibold text-stone-900">
           Já comprou? Consulte pelo WhatsApp
         </h2>
-        {proofSentSuccess ? (
-          <p className="mt-3 rounded-xl bg-emerald-50 px-3 py-2 text-sm font-medium text-emerald-900">
-            Comprovante anexado com sucesso. Busque pelo WhatsApp para ver seus
-            números.
-          </p>
-        ) : null}
         <label className="mt-3 block text-sm font-medium text-stone-700">
           WhatsApp
           <input
@@ -570,12 +544,7 @@ export function RaffleClient({
                       </div>
                       {order.status === "awaiting_payment" ? (
                         <p className="mt-3 text-xs font-medium text-brand-dark">
-                          Toque para ver o Pix e anexar o comprovante
-                        </p>
-                      ) : null}
-                      {order.status === "pending_review" ? (
-                        <p className="mt-3 text-xs font-medium text-amber-800">
-                          Toque para ver o status da análise
+                          Toque para ver o Pix e o tempo restante
                         </p>
                       ) : null}
                     </>
@@ -720,6 +689,20 @@ export function RaffleClient({
             {formatCentsBrl(activeOrder.totalCents)}
           </p>
 
+          {activeOrder.status === "awaiting_payment" ? (
+            <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-center">
+              <p className="text-xs font-semibold uppercase tracking-wide text-amber-800">
+                Tempo para pagar
+              </p>
+              <p className="mt-1 text-3xl font-bold tabular-nums text-amber-950">
+                {formatCountdown(remainingMs)}
+              </p>
+              <p className="mt-1 text-xs text-amber-800">
+                Sem pagamento, os números voltam a ficar livres.
+              </p>
+            </div>
+          ) : null}
+
           {showPix ? (
             <>
               {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -751,78 +734,22 @@ export function RaffleClient({
                   {pixCopied ? "Pix copiado!" : "Copiar Pix"}
                 </button>
               </div>
+              <p className="mt-3 text-center text-xs text-stone-500">
+                Pagou? A confirmação é automática. Pode deixar esta tela aberta.
+              </p>
             </>
           ) : null}
 
-          {activeOrder.status === "awaiting_payment" ? (
-            <div className="mt-4">
-              <input
-                ref={proofInputRef}
-                type="file"
-                accept="image/*,application/pdf,.heic,.heif"
-                className="hidden"
-                onChange={(event) =>
-                  handleProofFilePicked(event.target.files?.[0] ?? null)
-                }
-              />
-              {proofFile ? (
-                <div className="mb-3 rounded-xl border border-brand-200 bg-brand-50 px-3 py-3">
-                  <p className="text-xs font-medium uppercase tracking-wide text-stone-500">
-                    Arquivo anexado
-                  </p>
-                  <p className="mt-1 break-all text-sm font-semibold text-stone-900">
-                    {proofFile.name}
-                  </p>
-                  <button
-                    type="button"
-                    disabled={pending || proofUploading}
-                    onClick={() => {
-                      setProofFile(null);
-                      if (proofInputRef.current) {
-                        proofInputRef.current.value = "";
-                      }
-                    }}
-                    className="mt-2 text-sm font-medium text-brand-dark transition hover:text-brand-950 disabled:opacity-50"
-                  >
-                    Trocar arquivo
-                  </button>
-                </div>
-              ) : null}
-              <button
-                type="button"
-                disabled={pending || proofUploading}
-                onClick={() => {
-                  if (proofFile) {
-                    handleSendProof();
-                    return;
-                  }
-                  proofInputRef.current?.click();
-                }}
-                className="flex h-14 w-full cursor-pointer items-center justify-center rounded-2xl bg-brand-dark text-lg font-semibold text-white shadow-sm transition hover:bg-brand-950 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                {pending || proofUploading
-                  ? "Enviando..."
-                  : proofFile
-                    ? "Enviar"
-                    : "Anexar comprovante"}
-              </button>
-              <p className="mt-2 text-center text-xs text-stone-500">
-                Depois do envio, a equipe confirma o pagamento no app.
-              </p>
-            </div>
-          ) : null}
-
-          {activeOrder.status === "pending_review" ? (
-            <p className="mt-4 rounded-xl bg-amber-50 px-3 py-2 text-sm text-amber-900">
-              Comprovante recebido. Aguarde a confirmação.
-              {activeOrder.paymentProofUrl ? " Você já pode fechar esta tela." : ""}
+          {activeOrder.status === "paid" ? (
+            <p className="mt-4 rounded-xl bg-emerald-50 px-3 py-2 text-sm text-emerald-900">
+              Pagamento confirmado. Boa sorte no sorteio!
             </p>
           ) : null}
         </div>
       ) : null}
 
       <p className="text-center text-xs text-stone-400">
-        A reserva dos números vale por 30 minutos até anexar o comprovante.
+        A reserva dos números vale por 5 minutos até o Pix ser pago.
       </p>
 
       <SiteAlert alert={alert} onClose={() => setAlert(null)} />
