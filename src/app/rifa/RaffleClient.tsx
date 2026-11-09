@@ -488,14 +488,14 @@ export function RaffleClient({
 
       {ordersModalOpen ? (
         <div
-          className="fixed inset-0 z-50 flex items-end justify-center bg-brand-950/45 p-3 sm:items-center sm:p-5"
+          className="fixed inset-0 z-50 flex items-end justify-center bg-brand-950/45 sm:items-center sm:p-5"
           role="dialog"
           aria-modal="true"
           aria-labelledby="raffle-orders-title"
           onClick={() => setOrdersModalOpen(false)}
         >
           <div
-            className="flex max-h-[85dvh] w-full max-w-md flex-col overflow-hidden rounded-[1.75rem] border border-white/70 bg-brand-bg shadow-[0_24px_60px_rgba(14,90,88,0.28)]"
+            className="flex max-h-[90dvh] w-full max-w-lg flex-col overflow-hidden rounded-t-[1.75rem] border border-white/70 bg-brand-bg shadow-[0_24px_60px_rgba(14,90,88,0.28)] sm:max-h-[85dvh] sm:rounded-[1.75rem]"
             onClick={(event) => event.stopPropagation()}
           >
             <div className="flex items-start justify-between gap-3 bg-brand-dark px-5 py-4 text-white">
