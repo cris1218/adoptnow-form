@@ -159,3 +159,18 @@ export async function notifyStaffKnownPersonAutoApproved(
     },
   });
 }
+
+export async function notifyStaffRafflePaymentProof(input: {
+  orderId: string;
+  phone: string;
+}): Promise<void> {
+  await notifyStaff({
+    title: "Comprovante de rifa",
+    body: "Alguém enviou comprovante Pix. Confira no app para confirmar ou rejeitar.",
+    data: {
+      type: "raffle-payment-proof",
+      orderId: input.orderId,
+      phone: input.phone,
+    },
+  });
+}

@@ -1,11 +1,13 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
+import { useMemo, useRef, useState, useTransition } from "react";
 
 import {
   lookupRaffleOrdersByPhone,
   purchaseRaffleNumbers,
+  submitRafflePaymentProof,
 } from "@/app/rifa/actions";
+import { pixQrImageUrl } from "@/lib/pixBrCode";
 import {
   formatCentsBrl,
   type BuyerOrder,
@@ -20,6 +22,68 @@ function cellClass(status: RaffleNumberStatus, selected: boolean) {
   if (status === "paid") return "border-emerald-600 bg-emerald-50 text-emerald-900";
   if (status === "reserved") return "border-amber-500 bg-amber-50 text-amber-900";
   return "border-stone-300 bg-white text-stone-900";
+}
+
+function orderStatusLabel(status: BuyerOrder["status"]): string {
+  if (status === "paid") return "Pago";
+  if (status === "pending_review") return "Em análise";
+  if (status === "awaiting_payment") return "Aguardando Pix";
+  if (status === "rejected") return "Rejeitado";
+  return "Expirado";
+}
+
+async function uploadProof(file: File): Promise<string> {
+  const name = file.name.toLowerCase();
+  const type = file.type.toLowerCase();
+  let extension = "jpg";
+  if (name.endsWith(".png") || type === "image/png") extension = "png";
+  else if (name.endsWith(".webp") || type === "image/webp") extension = "webp";
+  else if (name.endsWith(".pdf") || type === "application/pdf") extension = "pdf";
+
+  const contentType =
+    file.type || (extension === "pdf" ? "application/pdf" : "image/jpeg");
+
+  const presignResponse = await fetch("/api/document-presign", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      extension,
+      contentType,
+      size: file.size,
+    }),
+  });
+  const presign = (await presignResponse.json()) as {
+    uploadUrl?: string;
+    publicUrl?: string;
+    headers?: Record<string, string>;
+    error?: string;
+  };
+  if (!presignResponse.ok || !presign.uploadUrl || !presign.publicUrl) {
+    throw new Error(presign.error ?? "Falha ao preparar o envio.");
+  }
+
+  const uploadResponse = await fetch(presign.uploadUrl, {
+    method: "PUT",
+    headers: presign.headers ?? { "Content-Type": contentType },
+    body: file,
+  });
+  if (!uploadResponse.ok) {
+    throw new Error("Falha ao enviar o comprovante.");
+  }
+  return presign.publicUrl;
+}
+
+function formatDrawAt(raw: string | null): string | null {
+  if (!raw) return null;
+  const date = new Date(raw);
+  if (Number.isNaN(date.getTime())) return raw;
+  return date.toLocaleString("pt-BR", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
 }
 
 export function RaffleClient({
@@ -41,10 +105,11 @@ export function RaffleClient({
   const [activeOrder, setActiveOrder] = useState<BuyerOrder | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
+  const proofInputRef = useRef<HTMLInputElement>(null);
 
   const canBuy = raffle.status === "open";
   const totalCents = selected.length * raffle.priceCents;
-
+  const drawAtLabel = formatDrawAt(raffle.drawAt);
   const selectedSet = useMemo(() => new Set(selected), [selected]);
 
   function toggleNumber(n: PublicRaffleNumber) {
@@ -66,10 +131,13 @@ export function RaffleClient({
         return;
       }
       setOrders(result.orders);
-      const pendingPix = result.orders.find(
-        (order) => order.status === "pending" && order.pixCopyPaste
+      const openPix = result.orders.find(
+        (order) =>
+          (order.status === "awaiting_payment" ||
+            order.status === "pending_review") &&
+          order.pixCopyPaste
       );
-      if (pendingPix) setActiveOrder(pendingPix);
+      if (openPix) setActiveOrder(openPix);
       if (result.orders.length === 0) {
         setMessage("Nenhum pedido para este WhatsApp nesta rifa.");
       }
@@ -87,9 +155,6 @@ export function RaffleClient({
       });
       if (!result.ok || !result.order) {
         setMessage(result.message || "Falha na compra.");
-        const refreshed = await lookupRaffleOrdersByPhone(token, buyerPhone);
-        void refreshed;
-        // recarrega grade via reload simples
         window.location.reload();
         return;
       }
@@ -102,9 +167,55 @@ export function RaffleClient({
             : item
         )
       );
-      setMessage("Pix gerado. Pague em até 30 minutos para garantir os números.");
+      setMessage(
+        "Pix gerado. Pague em até 30 minutos e anexe o comprovante."
+      );
     });
   }
+
+  function handleProofSelected(file: File | null) {
+    if (!file || !activeOrder) return;
+    setMessage(null);
+    startTransition(async () => {
+      try {
+        const url = await uploadProof(file);
+        const result = await submitRafflePaymentProof({
+          token,
+          orderId: activeOrder.id,
+          buyerPhone: buyerPhone || lookupPhone,
+          paymentProofUrl: url,
+        });
+        if (!result.ok) {
+          setMessage(result.message || "Falha ao enviar comprovante.");
+          return;
+        }
+        if (result.order) setActiveOrder(result.order);
+        else {
+          setActiveOrder({
+            ...activeOrder,
+            status: "pending_review",
+            paymentProofUrl: url,
+          });
+        }
+        setMessage(
+          result.message ||
+            "Comprovante enviado. Aguarde a confirmação da equipe."
+        );
+      } catch (error) {
+        setMessage(
+          error instanceof Error
+            ? error.message
+            : "Falha ao enviar comprovante."
+        );
+      }
+    });
+  }
+
+  const showPix =
+    activeOrder &&
+    (activeOrder.status === "awaiting_payment" ||
+      activeOrder.status === "pending_review") &&
+    activeOrder.pixCopyPaste;
 
   return (
     <div className="flex flex-col gap-5">
@@ -133,12 +244,22 @@ export function RaffleClient({
         ) : null}
         <p className="mt-3 text-sm font-semibold text-brand-dark">
           {formatCentsBrl(raffle.priceCents)} por número
-          {raffle.status !== "open"
-            ? raffle.status === "drawn"
-              ? ` · Sorteada${raffle.drawnNumber != null ? ` (#${raffle.drawnNumber})` : ""}`
-              : " · Encerrada"
-            : ""}
+          {raffle.status === "drawn"
+            ? ` · Sorteada${raffle.drawnNumber != null ? ` (#${raffle.drawnNumber})` : ""}`
+            : raffle.status === "closed"
+              ? " · Encerrada"
+              : ""}
         </p>
+        {raffle.status === "closed" && drawAtLabel ? (
+          <p className="mt-2 text-sm text-amber-900">
+            Vendas encerradas. Sorteio em {drawAtLabel}.
+          </p>
+        ) : null}
+        {raffle.status === "drawn" ? (
+          <p className="mt-2 text-sm text-emerald-800">
+            Sorteado foi o número {raffle.drawnNumber}.
+          </p>
+        ) : null}
       </div>
 
       <div className="rounded-[1.75rem] border border-white/70 bg-white/90 p-5">
@@ -175,7 +296,7 @@ export function RaffleClient({
                   className="w-full text-left"
                   onClick={() => setActiveOrder(order)}
                 >
-                  {order.status === "paid" ? "Pago" : "Aguardando Pix"} · nº{" "}
+                  {orderStatusLabel(order.status)} · nº{" "}
                   {order.numbers.join(", ")} · {formatCentsBrl(order.totalCents)}
                 </button>
               </li>
@@ -213,12 +334,10 @@ export function RaffleClient({
           <h2 className="text-lg font-semibold text-stone-900">Comprar</h2>
           <p className="mt-1 text-sm text-stone-600">
             Selecionados: {selected.length || "nenhum"}
-            {selected.length
-              ? ` · Total ${formatCentsBrl(totalCents)}`
-              : ""}
+            {selected.length ? ` · Total ${formatCentsBrl(totalCents)}` : ""}
           </p>
           <label className="mt-3 block text-sm font-medium text-stone-700">
-            Nome
+            Nome completo
             <input
               className="mt-1 w-full rounded-xl border border-stone-300 px-3 py-3"
               value={buyerName}
@@ -252,7 +371,9 @@ export function RaffleClient({
         </div>
       ) : (
         <p className="rounded-2xl bg-amber-50 px-4 py-3 text-sm text-amber-900">
-          Esta rifa não está aberta para novas compras.
+          {raffle.status === "closed"
+            ? `Vendas encerradas${drawAtLabel ? `. Sorteio em ${drawAtLabel}` : "."}`
+            : "Esta rifa não está aberta para novas compras."}
         </p>
       )}
 
@@ -265,46 +386,83 @@ export function RaffleClient({
       {activeOrder ? (
         <div className="rounded-[1.75rem] border border-brand-200 bg-white p-5">
           <h2 className="text-lg font-semibold text-stone-900">
-            {activeOrder.status === "paid" ? "Pagamento confirmado" : "Pix"}
+            {orderStatusLabel(activeOrder.status)}
           </h2>
           <p className="mt-1 text-sm text-stone-600">
             Números {activeOrder.numbers.join(", ")} ·{" "}
             {formatCentsBrl(activeOrder.totalCents)}
           </p>
-          {activeOrder.status === "pending" && activeOrder.pixQrBase64 ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              src={`data:image/png;base64,${activeOrder.pixQrBase64}`}
-              alt="QR Code Pix"
-              className="mx-auto mt-4 h-56 w-56 rounded-xl border border-stone-200"
-            />
+
+          {showPix ? (
+            <>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={
+                  activeOrder.pixQrBase64
+                    ? `data:image/png;base64,${activeOrder.pixQrBase64}`
+                    : pixQrImageUrl(activeOrder.pixCopyPaste)
+                }
+                alt="QR Code Pix"
+                className="mx-auto mt-4 h-56 w-56 rounded-xl border border-stone-200 bg-white"
+              />
+              <div className="mt-4">
+                <p className="text-xs font-medium uppercase tracking-wide text-stone-500">
+                  Copia e cola
+                </p>
+                <textarea
+                  readOnly
+                  className="mt-1 h-28 w-full rounded-xl border border-stone-300 p-3 text-xs"
+                  value={activeOrder.pixCopyPaste}
+                />
+                <button
+                  type="button"
+                  className="mt-2 flex h-12 w-full items-center justify-center rounded-2xl bg-stone-200 text-base font-semibold"
+                  onClick={() =>
+                    void navigator.clipboard.writeText(activeOrder.pixCopyPaste)
+                  }
+                >
+                  Copiar Pix
+                </button>
+              </div>
+            </>
           ) : null}
-          {activeOrder.status === "pending" && activeOrder.pixCopyPaste ? (
+
+          {activeOrder.status === "awaiting_payment" ? (
             <div className="mt-4">
-              <p className="text-xs font-medium uppercase tracking-wide text-stone-500">
-                Copia e cola
-              </p>
-              <textarea
-                readOnly
-                className="mt-1 h-28 w-full rounded-xl border border-stone-300 p-3 text-xs"
-                value={activeOrder.pixCopyPaste}
+              <input
+                ref={proofInputRef}
+                type="file"
+                accept="image/*,application/pdf"
+                className="hidden"
+                onChange={(event) =>
+                  handleProofSelected(event.target.files?.[0] ?? null)
+                }
               />
               <button
                 type="button"
-                className="mt-2 flex h-12 w-full items-center justify-center rounded-2xl bg-stone-200 text-base font-semibold"
-                onClick={() =>
-                  void navigator.clipboard.writeText(activeOrder.pixCopyPaste)
-                }
+                disabled={pending}
+                onClick={() => proofInputRef.current?.click()}
+                className="flex h-14 w-full items-center justify-center rounded-2xl bg-brand-dark text-lg font-semibold text-white disabled:opacity-50"
               >
-                Copiar Pix
+                {pending ? "Enviando..." : "Anexar comprovante"}
               </button>
+              <p className="mt-2 text-center text-xs text-stone-500">
+                Depois do envio, a equipe confirma o pagamento no app.
+              </p>
             </div>
+          ) : null}
+
+          {activeOrder.status === "pending_review" ? (
+            <p className="mt-4 rounded-xl bg-amber-50 px-3 py-2 text-sm text-amber-900">
+              Comprovante recebido. Aguarde a confirmação.
+              {activeOrder.paymentProofUrl ? " Você já pode fechar esta tela." : ""}
+            </p>
           ) : null}
         </div>
       ) : null}
 
       <p className="text-center text-xs text-stone-400">
-        A reserva dos números vale por 30 minutos até o pagamento do Pix.
+        A reserva dos números vale por 30 minutos até anexar o comprovante.
       </p>
     </div>
   );

@@ -1,6 +1,13 @@
 export type RaffleStatus = "open" | "closed" | "drawn";
 export type RaffleNumberStatus = "available" | "reserved" | "paid";
 
+export type RaffleOrderStatus =
+  | "awaiting_payment"
+  | "pending_review"
+  | "paid"
+  | "rejected"
+  | "expired";
+
 export type PublicRaffle = {
   id: string;
   title: string;
@@ -11,6 +18,7 @@ export type PublicRaffle = {
   status: RaffleStatus;
   drawnNumber: number | null;
   publicToken: string;
+  drawAt: string | null;
 };
 
 export type PublicRaffleNumber = {
@@ -20,11 +28,12 @@ export type PublicRaffleNumber = {
 
 export type BuyerOrder = {
   id: string;
-  status: "pending" | "paid" | "expired";
+  status: RaffleOrderStatus;
   numbers: number[];
   totalCents: number;
   pixCopyPaste: string;
   pixQrBase64: string;
+  paymentProofUrl: string;
   expiresAt: string | null;
   paidAt: string | null;
   createdAt: string | null;
@@ -50,12 +59,11 @@ export function mapPublicRaffle(raw: Record<string, unknown>): PublicRaffle {
     status: raw.status as RaffleStatus,
     drawnNumber: raw.drawn_number == null ? null : Number(raw.drawn_number),
     publicToken: String(raw.public_token ?? ""),
+    drawAt: raw.draw_at == null ? null : String(raw.draw_at),
   };
 }
 
-export function mapPublicNumbers(
-  raw: unknown
-): PublicRaffleNumber[] {
+export function mapPublicNumbers(raw: unknown): PublicRaffleNumber[] {
   if (!Array.isArray(raw)) return [];
   return raw.map((item) => {
     const row = item as Record<string, unknown>;
@@ -73,20 +81,14 @@ export function mapBuyerOrders(raw: unknown): BuyerOrder[] {
     return {
       id: String(row.id ?? ""),
       status: row.status as BuyerOrder["status"],
-      numbers: Array.isArray(row.numbers)
-        ? (row.numbers as number[])
-        : [],
+      numbers: Array.isArray(row.numbers) ? (row.numbers as number[]) : [],
       totalCents: Number(row.total_cents ?? 0),
       pixCopyPaste: String(row.pix_copy_paste ?? ""),
       pixQrBase64: String(row.pix_qr_base64 ?? ""),
+      paymentProofUrl: String(row.payment_proof_url ?? ""),
       expiresAt: row.expires_at == null ? null : String(row.expires_at),
       paidAt: row.paid_at == null ? null : String(row.paid_at),
       createdAt: row.created_at == null ? null : String(row.created_at),
     };
   });
-}
-
-export function technicalPayerEmail(phone: string): string {
-  const digits = phone.replace(/\D/g, "");
-  return `rifa+${digits}@recantoronron.invalid`;
 }
