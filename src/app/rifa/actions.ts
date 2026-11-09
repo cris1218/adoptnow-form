@@ -164,7 +164,7 @@ export async function purchaseRaffleNumbers(input: {
         amountCents: totalCents,
         description: `${title} · números ${(reserved.numbers ?? input.numbers).join(",")}`,
         buyerPhone: phone,
-        expirationMinutes: 5,
+        expirationMinutes: 30,
       });
     } catch (pixError) {
       await releaseReservedOrder();
@@ -198,6 +198,7 @@ export async function purchaseRaffleNumbers(input: {
         totalCents,
         pixCopyPaste: pix.qrCode,
         pixQrBase64: pix.qrCodeBase64,
+        pixTicketUrl: pix.ticketUrl || undefined,
         paymentProofUrl: "",
         expiresAt: reserved.expires_at ?? null,
         paidAt: null,

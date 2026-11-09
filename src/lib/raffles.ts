@@ -33,6 +33,8 @@ export type BuyerOrder = {
   totalCents: number;
   pixCopyPaste: string;
   pixQrBase64: string;
+  /** Link do ticket Pix do Mercado Pago (só na sessão após gerar). */
+  pixTicketUrl?: string;
   paymentProofUrl: string;
   expiresAt: string | null;
   paidAt: string | null;

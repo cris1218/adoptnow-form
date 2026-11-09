@@ -418,10 +418,9 @@ export function RaffleClient({
       if (!result.ok || !result.order) {
         showAlert(
           "Falha na compra",
-          result.message || "Não foi possível gerar o Pix.",
+          result.message || "Não foi possível iniciar o pagamento.",
           "error"
         );
-        window.location.reload();
         return;
       }
       setActiveOrder(result.order);
@@ -434,7 +433,7 @@ export function RaffleClient({
         )
       );
       showAlert(
-        "Pix gerado",
+        "Pedido reservado",
         "Pague em até 5 minutos. A confirmação é automática.",
         "success"
       );
@@ -444,7 +443,7 @@ export function RaffleClient({
   const showPix =
     Boolean(activeOrder) &&
     activeOrder?.status === "awaiting_payment" &&
-    Boolean(activeOrder.pixCopyPaste);
+    Boolean(activeOrder.pixCopyPaste || activeOrder.pixTicketUrl);
 
   return (
     <div className="flex flex-col gap-5">
@@ -704,7 +703,7 @@ export function RaffleClient({
             onClick={handlePurchase}
             className="mt-4 flex h-14 w-full cursor-pointer items-center justify-center rounded-2xl bg-brand-dark text-lg font-semibold text-white shadow-sm transition hover:bg-brand-950 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-50"
           >
-            {pending ? "Gerando Pix..." : "Gerar Pix"}
+            {pending ? "Preparando pagamento..." : "Pagar"}
           </button>
         </div>
       ) : (
@@ -749,35 +748,51 @@ export function RaffleClient({
 
           {showPix ? (
             <>
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={
-                  activeOrder.pixQrBase64
-                    ? `data:image/png;base64,${activeOrder.pixQrBase64}`
-                    : pixQrImageUrl(activeOrder.pixCopyPaste)
-                }
-                alt="QR Code Pix"
-                className="mx-auto mt-4 h-56 w-56 rounded-xl border border-stone-200 bg-white"
-              />
-              <div className="mt-4">
-                <p className="text-xs font-medium uppercase tracking-wide text-stone-500">
-                  Copia e cola
-                </p>
-                <textarea
-                  ref={pixCopyPasteRef}
-                  readOnly
-                  className="mt-1 h-28 w-full rounded-xl border border-stone-300 p-3 text-xs"
-                  value={activeOrder.pixCopyPaste}
-                  onFocus={(event) => event.currentTarget.select()}
-                />
-                <button
-                  type="button"
-                  className="mt-2 flex h-12 w-full cursor-pointer items-center justify-center rounded-2xl bg-brand-dark text-base font-semibold text-white shadow-sm transition hover:bg-brand-950 active:scale-[0.99]"
-                  onClick={() => void handleCopyPix()}
+              {activeOrder.pixTicketUrl ? (
+                <a
+                  href={activeOrder.pixTicketUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="mt-4 flex h-14 w-full cursor-pointer items-center justify-center rounded-2xl bg-brand-dark text-lg font-semibold text-white shadow-sm transition hover:bg-brand-950 active:scale-[0.99]"
                 >
-                  {pixCopied ? "Pix copiado!" : "Copiar Pix"}
-                </button>
-              </div>
+                  Pagar
+                </a>
+              ) : null}
+              {activeOrder.pixCopyPaste || activeOrder.pixQrBase64 ? (
+                <>
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={
+                      activeOrder.pixQrBase64
+                        ? `data:image/png;base64,${activeOrder.pixQrBase64}`
+                        : pixQrImageUrl(activeOrder.pixCopyPaste)
+                    }
+                    alt="QR Code Pix"
+                    className="mx-auto mt-4 h-56 w-56 rounded-xl border border-stone-200 bg-white"
+                  />
+                  {activeOrder.pixCopyPaste ? (
+                    <div className="mt-4">
+                      <p className="text-xs font-medium uppercase tracking-wide text-stone-500">
+                        Copia e cola
+                      </p>
+                      <textarea
+                        ref={pixCopyPasteRef}
+                        readOnly
+                        className="mt-1 h-28 w-full rounded-xl border border-stone-300 p-3 text-xs"
+                        value={activeOrder.pixCopyPaste}
+                        onFocus={(event) => event.currentTarget.select()}
+                      />
+                      <button
+                        type="button"
+                        className="mt-2 flex h-12 w-full cursor-pointer items-center justify-center rounded-2xl border border-brand-dark bg-white text-base font-semibold text-brand-dark shadow-sm transition hover:bg-brand-50 active:scale-[0.99]"
+                        onClick={() => void handleCopyPix()}
+                      >
+                        {pixCopied ? "Pix copiado!" : "Copiar Pix"}
+                      </button>
+                    </div>
+                  ) : null}
+                </>
+              ) : null}
               <p className="mt-3 text-center text-xs text-stone-500">
                 Pagou? A confirmação é automática. Pode deixar esta tela aberta.
               </p>
