@@ -105,6 +105,7 @@ export function mapBuyerOrders(raw: unknown): BuyerOrder[] {
 
 /** Usado só na V2 (Mercado Pago). Mantido para o módulo não quebrar o build. */
 export function technicalPayerEmail(phone: string): string {
-  const digits = phone.replace(/\D/g, "");
-  return `rifa+${digits}@recantoronron.invalid`;
+  const digits = phone.replace(/\D/g, "") || "00000000000";
+  // MP valida o e-mail; .invalid é rejeitado. Domínio técnico do site.
+  return `rifa.${digits}@recantoronron.vercel.app`;
 }
