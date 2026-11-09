@@ -102,6 +102,7 @@ export function RaffleClient({
   const [buyerPhone, setBuyerPhone] = useState("");
   const [lookupPhone, setLookupPhone] = useState("");
   const [orders, setOrders] = useState<BuyerOrder[]>([]);
+  const [ordersModalOpen, setOrdersModalOpen] = useState(false);
   const [activeOrder, setActiveOrder] = useState<BuyerOrder | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
@@ -123,25 +124,30 @@ export function RaffleClient({
 
   function handleLookup() {
     setMessage(null);
+    setOrdersModalOpen(false);
     startTransition(async () => {
       const result = await lookupRaffleOrdersByPhone(token, lookupPhone);
       if (!result.ok) {
-        setMessage(result.message || "Não encontramos pedidos.");
         setOrders([]);
+        setMessage(
+          result.message || "Nenhum número comprado para esse celular."
+        );
         return;
       }
       setOrders(result.orders);
-      const openPix = result.orders.find(
-        (order) =>
-          (order.status === "awaiting_payment" ||
-            order.status === "pending_review") &&
-          order.pixCopyPaste
-      );
-      if (openPix) setActiveOrder(openPix);
       if (result.orders.length === 0) {
-        setMessage("Nenhum pedido para este WhatsApp nesta rifa.");
+        setMessage("Nenhum número comprado para esse celular.");
+        return;
       }
+      setMessage(null);
+      setOrdersModalOpen(true);
     });
+  }
+
+  function openOrderFromModal(order: BuyerOrder) {
+    setOrdersModalOpen(false);
+    setActiveOrder(order);
+    if (!buyerPhone) setBuyerPhone(lookupPhone);
   }
 
   function handlePurchase() {
@@ -284,26 +290,58 @@ export function RaffleClient({
         >
           Buscar meus números
         </button>
-        {orders.length > 0 ? (
-          <ul className="mt-3 space-y-2">
-            {orders.map((order) => (
-              <li
-                key={order.id}
-                className="rounded-xl border border-stone-200 bg-stone-50 px-3 py-2 text-sm text-stone-700"
-              >
-                <button
-                  type="button"
-                  className="w-full text-left"
-                  onClick={() => setActiveOrder(order)}
-                >
-                  {orderStatusLabel(order.status)} · nº{" "}
-                  {order.numbers.join(", ")} · {formatCentsBrl(order.totalCents)}
-                </button>
-              </li>
-            ))}
-          </ul>
-        ) : null}
       </div>
+
+      {ordersModalOpen ? (
+        <div
+          className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-4 sm:items-center"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="raffle-orders-title"
+          onClick={() => setOrdersModalOpen(false)}
+        >
+          <div
+            className="max-h-[80vh] w-full max-w-md overflow-y-auto rounded-3xl bg-white p-5 shadow-xl"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <h2
+              id="raffle-orders-title"
+              className="text-xl font-bold text-stone-900"
+            >
+              Números deste celular
+            </h2>
+            <p className="mt-1 text-sm text-stone-500">{lookupPhone}</p>
+            <ul className="mt-4 space-y-2">
+              {orders.map((order) => (
+                <li key={order.id}>
+                  <button
+                    type="button"
+                    className="w-full rounded-2xl border border-stone-200 bg-stone-50 px-4 py-3 text-left"
+                    onClick={() => openOrderFromModal(order)}
+                  >
+                    <p className="text-sm font-semibold text-stone-900">
+                      {orderStatusLabel(order.status)}
+                    </p>
+                    <p className="mt-1 text-sm text-stone-700">
+                      Números {order.numbers.join(", ")}
+                    </p>
+                    <p className="mt-0.5 text-xs text-stone-500">
+                      {formatCentsBrl(order.totalCents)}
+                    </p>
+                  </button>
+                </li>
+              ))}
+            </ul>
+            <button
+              type="button"
+              className="mt-4 flex h-12 w-full items-center justify-center rounded-2xl bg-stone-200 text-base font-semibold text-stone-900"
+              onClick={() => setOrdersModalOpen(false)}
+            >
+              Fechar
+            </button>
+          </div>
+        </div>
+      ) : null}
 
       <div className="rounded-[1.75rem] border border-white/70 bg-white/90 p-5">
         <h2 className="text-lg font-semibold text-stone-900">Números</h2>
