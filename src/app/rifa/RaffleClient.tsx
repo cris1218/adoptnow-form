@@ -168,6 +168,7 @@ export function RaffleClient({
   const proofInputRef = useRef<HTMLInputElement>(null);
   const pixSectionRef = useRef<HTMLDivElement>(null);
   const pixCopyPasteRef = useRef<HTMLTextAreaElement>(null);
+  const lookupSectionRef = useRef<HTMLDivElement>(null);
 
   const canBuy = raffle.status === "open";
   const totalCents = selected.length * raffle.priceCents;
@@ -320,19 +321,23 @@ export function RaffleClient({
           window.alert(failMessage);
           return;
         }
+        const successPhone = phoneForProof;
         setActiveOrder(null);
         setSelected([]);
         setProofFile(null);
         setProofUploading(false);
         setProofSentSuccess(true);
         setMessage(null);
+        if (successPhone) {
+          setLookupPhone(maskPhone(successPhone));
+        }
+        window.alert("Comprovante anexado com sucesso.");
         window.setTimeout(() => {
-          try {
-            window.close();
-          } catch {
-            // navegador pode bloquear close
-          }
-        }, 1200);
+          lookupSectionRef.current?.scrollIntoView({
+            behavior: "smooth",
+            block: "start",
+          });
+        }, 150);
       } catch (error) {
         const failMessage =
           error instanceof Error
@@ -356,23 +361,6 @@ export function RaffleClient({
     !proofFile &&
     !proofUploading &&
     !proofSentSuccess;
-
-  if (proofSentSuccess) {
-    return (
-      <div className="rounded-[1.75rem] border border-emerald-200 bg-emerald-50 p-6 text-center shadow-[0_18px_50px_rgba(14,90,88,0.12)]">
-        <p className="text-2xl font-bold tracking-tight text-emerald-950">
-          Comprovante enviado com sucesso
-        </p>
-        <p className="mt-3 text-base leading-relaxed text-emerald-900">
-          Recebemos seu Pix. A equipe do Recanto do Ron Ron vai confirmar e
-          liberar seus números.
-        </p>
-        <p className="mt-4 text-sm text-emerald-800">
-          Pode fechar esta página.
-        </p>
-      </div>
-    );
-  }
 
   return (
     <div className="flex flex-col gap-5">
@@ -419,10 +407,19 @@ export function RaffleClient({
         ) : null}
       </div>
 
-      <div className="rounded-[1.75rem] border border-white/70 bg-white/90 p-5">
+      <div
+        ref={lookupSectionRef}
+        className="scroll-mt-4 rounded-[1.75rem] border border-white/70 bg-white/90 p-5"
+      >
         <h2 className="text-lg font-semibold text-stone-900">
           Já comprou? Consulte pelo WhatsApp
         </h2>
+        {proofSentSuccess ? (
+          <p className="mt-3 rounded-xl bg-emerald-50 px-3 py-2 text-sm font-medium text-emerald-900">
+            Comprovante anexado com sucesso. Busque pelo WhatsApp para ver seus
+            números.
+          </p>
+        ) : null}
         <label className="mt-3 block text-sm font-medium text-stone-700">
           WhatsApp
           <input
