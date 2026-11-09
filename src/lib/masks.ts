@@ -57,11 +57,23 @@ export function phoneError(value: string): string {
   return "";
 }
 
-export function normalizeFullName(value: string): string {
-  return value.trim().replace(/\s+/g, " ");
-}
-
 const NAME_CONNECTORS = new Set(["da", "das", "de", "do", "dos", "e"]);
+
+/** Nome completo em capitalize: "joao de deus" → "Joao de Deus". */
+export function normalizeFullName(value: string): string {
+  const cleaned = value.trim().replace(/\s+/g, " ");
+  if (!cleaned) return "";
+
+  return cleaned
+    .split(" ")
+    .map((word, index) => {
+      const lower = word.toLocaleLowerCase("pt-BR");
+      if (index > 0 && NAME_CONNECTORS.has(lower)) return lower;
+      if (!lower) return lower;
+      return lower.charAt(0).toLocaleUpperCase("pt-BR") + lower.slice(1);
+    })
+    .join(" ");
+}
 
 const FULL_NAME_PLACEHOLDERS = new Set([
   "teste",
