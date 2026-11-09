@@ -438,6 +438,10 @@ export function RaffleClient({
       }
       setActiveOrder(result.order);
       setSelected([]);
+      setBuyerName("");
+      setBuyerPhone("");
+      setBuyerNameTouched(false);
+      setBuyerPhoneTouched(false);
       setNumbers((current) =>
         current.map((item) =>
           result.order!.numbers.includes(item.number)
