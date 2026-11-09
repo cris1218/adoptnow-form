@@ -91,6 +91,8 @@ export function mapBuyerOrders(raw: unknown): BuyerOrder[] {
       expiresAt: row.expires_at == null ? null : String(row.expires_at),
       paidAt: row.paid_at == null ? null : String(row.paid_at),
       createdAt: row.created_at == null ? null : String(row.created_at),
+      buyerName: row.buyer_name == null ? undefined : String(row.buyer_name),
+      buyerPhone: row.buyer_phone == null ? undefined : String(row.buyer_phone),
     };
   });
 }

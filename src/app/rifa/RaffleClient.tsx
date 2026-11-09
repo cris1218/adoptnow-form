@@ -7,6 +7,7 @@ import {
   purchaseRaffleNumbers,
   submitRafflePaymentProof,
 } from "@/app/rifa/actions";
+import { SiteAlert, type SiteAlertState } from "@/components/SiteAlert";
 import { pixQrImageUrl } from "@/lib/pixBrCode";
 import {
   formatCentsBrl,
@@ -159,7 +160,7 @@ export function RaffleClient({
   const [orders, setOrders] = useState<BuyerOrder[]>([]);
   const [ordersModalOpen, setOrdersModalOpen] = useState(false);
   const [activeOrder, setActiveOrder] = useState<BuyerOrder | null>(null);
-  const [message, setMessage] = useState<string | null>(null);
+  const [alert, setAlert] = useState<SiteAlertState>(null);
   const [pixCopied, setPixCopied] = useState(false);
   const [proofSentSuccess, setProofSentSuccess] = useState(false);
   const [proofFile, setProofFile] = useState<File | null>(null);
@@ -176,6 +177,14 @@ export function RaffleClient({
   const selectedSet = useMemo(() => new Set(selected), [selected]);
   const buyerNameError = fullNameError(buyerName);
   const buyerPhoneError = phoneError(buyerPhone);
+
+  function showAlert(
+    title: string,
+    message: string,
+    tone: NonNullable<SiteAlertState>["tone"] = "info"
+  ) {
+    setAlert({ title, message, tone });
+  }
 
   useEffect(() => {
     if (!activeOrder) return;
@@ -204,16 +213,24 @@ export function RaffleClient({
       try {
         const selected = document.execCommand("copy");
         if (!selected) {
-          setMessage("Não foi possível copiar. Selecione o texto e copie manualmente.");
+          showAlert(
+            "Não foi possível copiar",
+            "Selecione o texto e copie manualmente.",
+            "error"
+          );
           return;
         }
       } catch {
-        setMessage("Não foi possível copiar. Selecione o texto e copie manualmente.");
+        showAlert(
+          "Não foi possível copiar",
+          "Selecione o texto e copie manualmente.",
+          "error"
+        );
         return;
       }
     }
     setPixCopied(true);
-    setMessage("Pix copiado. Cole no app do seu banco.");
+    showAlert("Pix copiado", "Cole no app do seu banco.", "success");
     window.setTimeout(() => setPixCopied(false), 2500);
   }
 
@@ -227,23 +244,27 @@ export function RaffleClient({
   }
 
   function handleLookup() {
-    setMessage(null);
     setOrdersModalOpen(false);
     startTransition(async () => {
       const result = await lookupRaffleOrdersByPhone(token, lookupPhone);
       if (!result.ok) {
         setOrders([]);
-        setMessage(
-          result.message || "Nenhum número comprado para esse celular."
+        showAlert(
+          "Consulta indisponível",
+          result.message || "Não foi possível buscar os números agora.",
+          "error"
         );
         return;
       }
       setOrders(result.orders);
       if (result.orders.length === 0) {
-        setMessage("Nenhum número comprado para esse celular.");
+        showAlert(
+          "Nenhum número encontrado",
+          "Nenhum número comprado para esse celular.",
+          "error"
+        );
         return;
       }
-      setMessage(null);
       setOrdersModalOpen(true);
     });
   }
@@ -253,14 +274,18 @@ export function RaffleClient({
     const phone = order.buyerPhone || lookupPhone;
     setActiveOrder({ ...order, buyerPhone: phone });
     if (!buyerPhone && phone) setBuyerPhone(phone);
+    if (!buyerName && order.buyerName) setBuyerName(order.buyerName);
   }
 
   function handlePurchase() {
     setBuyerNameTouched(true);
     setBuyerPhoneTouched(true);
-    setMessage(null);
     if (buyerNameError || buyerPhoneError) {
-      setMessage(buyerNameError || buyerPhoneError);
+      showAlert(
+        "Dados incompletos",
+        buyerNameError || buyerPhoneError || "Confira nome e WhatsApp.",
+        "error"
+      );
       return;
     }
     startTransition(async () => {
@@ -271,7 +296,11 @@ export function RaffleClient({
         buyerPhone,
       });
       if (!result.ok || !result.order) {
-        setMessage(result.message || "Falha na compra.");
+        showAlert(
+          "Falha na compra",
+          result.message || "Não foi possível gerar o Pix.",
+          "error"
+        );
         window.location.reload();
         return;
       }
@@ -284,21 +313,21 @@ export function RaffleClient({
             : item
         )
       );
-      setMessage(
-        "Pix gerado. Pague em até 30 minutos e anexe o comprovante."
+      showAlert(
+        "Pix gerado",
+        "Pague em até 30 minutos e anexe o comprovante.",
+        "success"
       );
     });
   }
 
   function handleProofFilePicked(file: File | null) {
     if (!file) return;
-    setMessage(null);
     setProofFile(file);
   }
 
   function handleSendProof() {
     if (!proofFile || !activeOrder) return;
-    setMessage(null);
     setProofUploading(true);
     const orderId = activeOrder.id;
     const phoneForProof =
@@ -317,8 +346,7 @@ export function RaffleClient({
           const failMessage =
             result.message || "Falha ao enviar comprovante.";
           setProofUploading(false);
-          setMessage(failMessage);
-          window.alert(failMessage);
+          showAlert("Envio não concluído", failMessage, "error");
           return;
         }
         const successPhone = phoneForProof;
@@ -327,11 +355,14 @@ export function RaffleClient({
         setProofFile(null);
         setProofUploading(false);
         setProofSentSuccess(true);
-        setMessage(null);
         if (successPhone) {
           setLookupPhone(maskPhone(successPhone));
         }
-        window.alert("Comprovante anexado com sucesso.");
+        showAlert(
+          "Comprovante anexado",
+          "Comprovante anexado com sucesso. Busque pelo WhatsApp para ver seus números.",
+          "success"
+        );
         window.setTimeout(() => {
           lookupSectionRef.current?.scrollIntoView({
             behavior: "smooth",
@@ -344,8 +375,7 @@ export function RaffleClient({
             ? error.message
             : "Falha ao enviar comprovante.";
         setProofUploading(false);
-        setMessage(failMessage);
-        window.alert(failMessage);
+        showAlert("Envio não concluído", failMessage, "error");
       } finally {
         if (proofInputRef.current) {
           proofInputRef.current.value = "";
@@ -468,7 +498,16 @@ export function RaffleClient({
                     className="w-full cursor-pointer rounded-2xl border border-stone-200 bg-stone-50 px-4 py-3 text-left transition hover:border-brand-200 hover:bg-brand-50 active:scale-[0.99]"
                     onClick={() => openOrderFromModal(order)}
                   >
-                    <p className="text-sm font-semibold text-stone-900">
+                    {order.buyerName ? (
+                      <p className="text-sm font-semibold text-stone-900">
+                        {order.buyerName}
+                      </p>
+                    ) : null}
+                    <p
+                      className={`text-sm font-semibold ${
+                        order.buyerName ? "mt-1 text-brand-dark" : "text-stone-900"
+                      }`}
+                    >
                       {orderStatusLabel(order.status)}
                     </p>
                     <p className="mt-1 text-sm text-stone-700">
@@ -581,12 +620,6 @@ export function RaffleClient({
         </p>
       )}
 
-      {message ? (
-        <p className="rounded-xl bg-stone-100 px-3 py-2 text-sm text-stone-700">
-          {message}
-        </p>
-      ) : null}
-
       {activeOrder ? (
         <div
           ref={pixSectionRef}
@@ -595,6 +628,11 @@ export function RaffleClient({
           <h2 className="text-lg font-semibold text-stone-900">
             {orderStatusLabel(activeOrder.status)}
           </h2>
+          {activeOrder.buyerName ? (
+            <p className="mt-1 text-sm font-medium text-stone-800">
+              {activeOrder.buyerName}
+            </p>
+          ) : null}
           <p className="mt-1 text-sm text-stone-600">
             Números {activeOrder.numbers.join(", ")} ·{" "}
             {formatCentsBrl(activeOrder.totalCents)}
@@ -658,7 +696,6 @@ export function RaffleClient({
                     disabled={pending || proofUploading}
                     onClick={() => {
                       setProofFile(null);
-                      setMessage(null);
                       if (proofInputRef.current) {
                         proofInputRef.current.value = "";
                       }
@@ -687,11 +724,6 @@ export function RaffleClient({
                     ? "Enviar"
                     : "Anexar comprovante"}
               </button>
-              {message ? (
-                <p className="mt-3 rounded-xl bg-rose-50 px-3 py-2 text-sm font-medium text-rose-700">
-                  {message}
-                </p>
-              ) : null}
               <p className="mt-2 text-center text-xs text-stone-500">
                 Depois do envio, a equipe confirma o pagamento no app.
               </p>
@@ -710,6 +742,8 @@ export function RaffleClient({
       <p className="text-center text-xs text-stone-400">
         A reserva dos números vale por 30 minutos até anexar o comprovante.
       </p>
+
+      <SiteAlert alert={alert} onClose={() => setAlert(null)} />
     </div>
   );
 }
