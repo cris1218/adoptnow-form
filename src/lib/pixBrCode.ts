@@ -1,5 +1,7 @@
-const MERCHANT_NAME = "Recanto do Ron Ron";
-const MERCHANT_CITY = "Ponta Grossa";
+import QRCode from "qrcode";
+
+const MERCHANT_NAME = "RECANTORONRON";
+const MERCHANT_CITY = "PONTA GROSSA";
 
 function tlv(id: string, value: string): string {
   const length = String(value.length).padStart(2, "0");
@@ -18,25 +20,43 @@ function crc16(payload: string): string {
   return crc.toString(16).toUpperCase().padStart(4, "0");
 }
 
+function onlyAsciiAlnum(value: string): string {
+  return value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^A-Za-z0-9]/g, "")
+    .slice(0, 25);
+}
+
+/** Normaliza chave Pix (CPF/CNPJ/telefone sem máscara; e-mail/aleatória trim). */
+export function normalizePixKey(raw: string): string {
+  const key = raw.trim();
+  if (!key) return "";
+  if (key.includes("@")) return key.toLowerCase();
+  const digits = key.replace(/\D/g, "");
+  if (
+    digits.length === 11 ||
+    digits.length === 14 ||
+    (digits.length >= 10 && digits.length <= 13)
+  ) {
+    return digits;
+  }
+  return key;
+}
+
 /** Gera Pix copia-e-cola (BR Code) estático com valor. */
 export function buildPixCopyPaste(input: {
   pixKey: string;
   amountCents: number;
   description?: string;
 }): string {
-  const key = input.pixKey.trim();
+  const key = normalizePixKey(input.pixKey);
   if (!key) throw new Error("Chave Pix ausente.");
   if (input.amountCents <= 0) throw new Error("Valor inválido.");
 
   const amount = (input.amountCents / 100).toFixed(2);
   const merchantAccount = tlv("00", "br.gov.bcb.pix") + tlv("01", key);
-  const additional =
-    input.description && input.description.trim()
-      ? tlv("05", input.description.trim().slice(0, 25))
-      : "";
-
-  const name = MERCHANT_NAME.slice(0, 25);
-  const city = MERCHANT_CITY.slice(0, 15);
+  const txid = onlyAsciiAlnum(input.description || "RIFA") || "RIFA";
 
   let payload = "";
   payload += tlv("00", "01");
@@ -45,13 +65,26 @@ export function buildPixCopyPaste(input: {
   payload += tlv("53", "986");
   payload += tlv("54", amount);
   payload += tlv("58", "BR");
-  payload += tlv("59", name);
-  payload += tlv("60", city);
-  if (additional) payload += tlv("62", additional);
+  payload += tlv("59", MERCHANT_NAME.slice(0, 25));
+  payload += tlv("60", MERCHANT_CITY.slice(0, 15));
+  payload += tlv("62", tlv("05", txid));
   payload += "6304";
   payload += crc16(payload);
 
   return payload;
+}
+
+export async function buildPixQrBase64(copyPaste: string): Promise<string> {
+  const dataUrl = await QRCode.toDataURL(copyPaste, {
+    errorCorrectionLevel: "M",
+    margin: 1,
+    width: 280,
+    type: "image/png",
+  });
+  const marker = "base64,";
+  const index = dataUrl.indexOf(marker);
+  if (index < 0) throw new Error("Falha ao gerar QR Code.");
+  return dataUrl.slice(index + marker.length);
 }
 
 export function pixQrImageUrl(copyPaste: string, size = 280): string {

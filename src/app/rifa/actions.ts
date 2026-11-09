@@ -1,6 +1,6 @@
 "use server";
 
-import { buildPixCopyPaste } from "@/lib/pixBrCode";
+import { buildPixCopyPaste, buildPixQrBase64 } from "@/lib/pixBrCode";
 import {
   mapBuyerOrders,
   mapPublicNumbers,
@@ -132,8 +132,9 @@ export async function purchaseRaffleNumbers(input: {
     const pixCopyPaste = buildPixCopyPaste({
       pixKey: reserved.pix_key,
       amountCents: Number(reserved.total_cents ?? 0),
-      description: `Rifa ${(reserved.title ?? "").slice(0, 20)}`,
+      description: `RIFA${String(reserved.order_id).replace(/-/g, "").slice(0, 20)}`,
     });
+    const pixQrBase64 = await buildPixQrBase64(pixCopyPaste);
 
     const { error: attachError } = await admin.rpc(
       "attach_raffle_order_pix_static",
@@ -147,7 +148,9 @@ export async function purchaseRaffleNumbers(input: {
       console.error("attach_raffle_order_pix_static", attachError);
       return {
         ok: false,
-        message: "Reserva ok, mas falhou ao montar o Pix. Fale conosco.",
+        message:
+          attachError.message ||
+          "Reserva ok, mas falhou ao montar o Pix. Fale conosco.",
       };
     }
 
@@ -159,7 +162,7 @@ export async function purchaseRaffleNumbers(input: {
         numbers: reserved.numbers ?? input.numbers,
         totalCents: Number(reserved.total_cents ?? 0),
         pixCopyPaste,
-        pixQrBase64: "",
+        pixQrBase64,
         paymentProofUrl: "",
         expiresAt: reserved.expires_at ?? null,
         paidAt: null,
