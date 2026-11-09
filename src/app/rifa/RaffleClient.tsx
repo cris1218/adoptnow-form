@@ -41,6 +41,14 @@ function orderStatusLabel(status: BuyerOrder["status"]): string {
   return "Expirado";
 }
 
+function orderStatusBadgeClass(status: BuyerOrder["status"]): string {
+  if (status === "paid") return "bg-emerald-100 text-emerald-900";
+  if (status === "pending_review") return "bg-amber-100 text-amber-900";
+  if (status === "awaiting_payment") return "bg-sky-100 text-sky-900";
+  if (status === "rejected") return "bg-rose-100 text-rose-900";
+  return "bg-stone-100 text-stone-700";
+}
+
 async function uploadProof(file: File): Promise<string> {
   const name = file.name.toLowerCase();
   const type = file.type.toLowerCase();
@@ -473,60 +481,95 @@ export function RaffleClient({
 
       {ordersModalOpen ? (
         <div
-          className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-4 sm:items-center"
+          className="fixed inset-0 z-50 flex items-end justify-center bg-brand-950/45 p-3 sm:items-center sm:p-5"
           role="dialog"
           aria-modal="true"
           aria-labelledby="raffle-orders-title"
           onClick={() => setOrdersModalOpen(false)}
         >
           <div
-            className="max-h-[80vh] w-full max-w-md overflow-y-auto rounded-3xl bg-white p-5 shadow-xl"
+            className="flex max-h-[85dvh] w-full max-w-md flex-col overflow-hidden rounded-[1.75rem] border border-white/70 bg-brand-bg shadow-[0_24px_60px_rgba(14,90,88,0.28)]"
             onClick={(event) => event.stopPropagation()}
           >
-            <h2
-              id="raffle-orders-title"
-              className="text-xl font-bold text-stone-900"
-            >
-              Números deste celular
-            </h2>
-            <p className="mt-1 text-sm text-stone-500">{lookupPhone}</p>
-            <ul className="mt-4 space-y-2">
-              {orders.map((order) => (
-                <li key={order.id}>
-                  <button
-                    type="button"
-                    className="w-full cursor-pointer rounded-2xl border border-stone-200 bg-stone-50 px-4 py-3 text-left transition hover:border-brand-200 hover:bg-brand-50 active:scale-[0.99]"
-                    onClick={() => openOrderFromModal(order)}
-                  >
-                    {order.buyerName ? (
-                      <p className="text-sm font-semibold text-stone-900">
-                        {order.buyerName}
-                      </p>
-                    ) : null}
-                    <p
-                      className={`text-sm font-semibold ${
-                        order.buyerName ? "mt-1 text-brand-dark" : "text-stone-900"
-                      }`}
+            <div className="flex items-start justify-between gap-3 bg-brand-dark px-5 py-4 text-white">
+              <div className="min-w-0">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-white/75">
+                  Consulta
+                </p>
+                <h2
+                  id="raffle-orders-title"
+                  className="mt-1 text-xl font-bold tracking-tight"
+                >
+                  Seus números
+                </h2>
+                <p className="mt-1 truncate text-sm text-white/85">
+                  {lookupPhone}
+                </p>
+              </div>
+              <button
+                type="button"
+                aria-label="Fechar"
+                className="flex h-9 w-9 shrink-0 cursor-pointer items-center justify-center rounded-xl bg-white/15 text-xl leading-none transition hover:bg-white/25"
+                onClick={() => setOrdersModalOpen(false)}
+              >
+                ×
+              </button>
+            </div>
+
+            <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
+              <ul className="space-y-3">
+                {orders.map((order) => (
+                  <li key={order.id}>
+                    <button
+                      type="button"
+                      className="w-full cursor-pointer rounded-[1.35rem] border border-white/80 bg-white/95 px-4 py-4 text-left shadow-[0_10px_28px_rgba(14,90,88,0.08)] transition hover:border-brand-light/50 hover:shadow-[0_14px_32px_rgba(14,90,88,0.14)] active:scale-[0.99]"
+                      onClick={() => openOrderFromModal(order)}
                     >
-                      {orderStatusLabel(order.status)}
-                    </p>
-                    <p className="mt-1 text-sm text-stone-700">
-                      Números {order.numbers.join(", ")}
-                    </p>
-                    <p className="mt-0.5 text-xs text-stone-500">
-                      {formatCentsBrl(order.totalCents)}
-                    </p>
-                  </button>
-                </li>
-              ))}
-            </ul>
-            <button
-              type="button"
-              className="mt-4 flex h-12 w-full cursor-pointer items-center justify-center rounded-2xl bg-stone-200 text-base font-semibold text-stone-900 shadow-sm transition hover:bg-stone-300 active:scale-[0.99]"
-              onClick={() => setOrdersModalOpen(false)}
-            >
-              Fechar
-            </button>
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="truncate text-base font-bold text-stone-900">
+                            {order.buyerName || "Comprador"}
+                          </p>
+                          <p className="mt-0.5 text-sm text-stone-500">
+                            {formatCentsBrl(order.totalCents)}
+                          </p>
+                        </div>
+                        <span
+                          className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-semibold ${orderStatusBadgeClass(order.status)}`}
+                        >
+                          {orderStatusLabel(order.status)}
+                        </span>
+                      </div>
+                      <div className="mt-3 flex flex-wrap gap-1.5">
+                        {order.numbers.map((number) => (
+                          <span
+                            key={`${order.id}-${number}`}
+                            className="inline-flex h-8 min-w-8 items-center justify-center rounded-lg bg-brand-dark px-2 text-sm font-semibold text-white"
+                          >
+                            {number}
+                          </span>
+                        ))}
+                      </div>
+                      {order.status === "awaiting_payment" ? (
+                        <p className="mt-3 text-xs font-medium text-brand-dark">
+                          Toque para ver o Pix e anexar o comprovante
+                        </p>
+                      ) : null}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </div>
+
+            <div className="border-t border-stone-200/80 bg-white/80 px-4 py-3">
+              <button
+                type="button"
+                className="flex h-12 w-full cursor-pointer items-center justify-center rounded-2xl bg-stone-200 text-base font-semibold text-stone-900 transition hover:bg-stone-300 active:scale-[0.99]"
+                onClick={() => setOrdersModalOpen(false)}
+              >
+                Fechar
+              </button>
+            </div>
           </div>
         </div>
       ) : null}
