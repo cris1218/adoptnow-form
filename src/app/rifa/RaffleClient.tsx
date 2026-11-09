@@ -46,10 +46,19 @@ async function uploadProof(file: File): Promise<string> {
   let extension = "jpg";
   if (name.endsWith(".png") || type === "image/png") extension = "png";
   else if (name.endsWith(".webp") || type === "image/webp") extension = "webp";
-  else if (name.endsWith(".pdf") || type === "application/pdf") extension = "pdf";
+  else if (name.endsWith(".heic") || type === "image/heic" || type === "image/heif") {
+    extension = "heic";
+  } else if (name.endsWith(".pdf") || type === "application/pdf") {
+    extension = "pdf";
+  }
 
   const contentType =
-    file.type || (extension === "pdf" ? "application/pdf" : "image/jpeg");
+    file.type ||
+    (extension === "pdf"
+      ? "application/pdf"
+      : extension === "heic"
+        ? "image/heic"
+        : "image/jpeg");
 
   const presignResponse = await fetch("/api/document-presign", {
     method: "POST",
@@ -236,8 +245,9 @@ export function RaffleClient({
 
   function openOrderFromModal(order: BuyerOrder) {
     setOrdersModalOpen(false);
-    setActiveOrder(order);
-    if (!buyerPhone) setBuyerPhone(lookupPhone);
+    const phone = order.buyerPhone || lookupPhone;
+    setActiveOrder({ ...order, buyerPhone: phone });
+    if (!buyerPhone && phone) setBuyerPhone(phone);
   }
 
   function handlePurchase() {
@@ -278,17 +288,23 @@ export function RaffleClient({
   function handleProofSelected(file: File | null) {
     if (!file || !activeOrder) return;
     setMessage(null);
+    const orderId = activeOrder.id;
+    const phoneForProof =
+      activeOrder.buyerPhone || buyerPhone || lookupPhone;
     startTransition(async () => {
       try {
         const url = await uploadProof(file);
         const result = await submitRafflePaymentProof({
           token,
-          orderId: activeOrder.id,
-          buyerPhone: buyerPhone || lookupPhone,
+          orderId,
+          buyerPhone: phoneForProof,
           paymentProofUrl: url,
         });
         if (!result.ok) {
-          setMessage(result.message || "Falha ao enviar comprovante.");
+          const failMessage =
+            result.message || "Falha ao enviar comprovante.";
+          setMessage(failMessage);
+          window.alert(failMessage);
           return;
         }
         setActiveOrder(null);
@@ -303,11 +319,16 @@ export function RaffleClient({
           }
         }, 1200);
       } catch (error) {
-        setMessage(
+        const failMessage =
           error instanceof Error
             ? error.message
-            : "Falha ao enviar comprovante."
-        );
+            : "Falha ao enviar comprovante.";
+        setMessage(failMessage);
+        window.alert(failMessage);
+      } finally {
+        if (proofInputRef.current) {
+          proofInputRef.current.value = "";
+        }
       }
     });
   }
@@ -603,7 +624,7 @@ export function RaffleClient({
               <input
                 ref={proofInputRef}
                 type="file"
-                accept="image/*,application/pdf"
+                accept="image/*,application/pdf,.heic,.heif"
                 className="hidden"
                 onChange={(event) =>
                   handleProofSelected(event.target.files?.[0] ?? null)
@@ -617,6 +638,11 @@ export function RaffleClient({
               >
                 {pending ? "Enviando..." : "Anexar comprovante"}
               </button>
+              {message ? (
+                <p className="mt-3 rounded-xl bg-rose-50 px-3 py-2 text-sm font-medium text-rose-700">
+                  {message}
+                </p>
+              ) : null}
               <p className="mt-2 text-center text-xs text-stone-500">
                 Depois do envio, a equipe confirma o pagamento no app.
               </p>

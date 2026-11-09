@@ -179,6 +179,8 @@ export async function purchaseRaffleNumbers(input: {
         expiresAt: reserved.expires_at ?? null,
         paidAt: null,
         createdAt: null,
+        buyerPhone: phone,
+        buyerName: name,
       },
     };
   } catch (error) {
@@ -199,26 +201,68 @@ export async function submitRafflePaymentProof(input: {
   buyerPhone: string;
   paymentProofUrl: string;
 }): Promise<{ ok: boolean; message?: string; order?: BuyerOrder }> {
-  const phone = normalizePhone(input.buyerPhone);
   const url = input.paymentProofUrl.trim();
-  const invalidPhone = phoneError(phone);
-  if (invalidPhone) {
-    return { ok: false, message: invalidPhone };
-  }
   if (!url) {
     return { ok: false, message: "Anexe o comprovante." };
+  }
+  if (!input.orderId) {
+    return { ok: false, message: "Pedido inválido. Gere o Pix novamente." };
   }
 
   try {
     const admin = adminOrThrow();
+    const token = input.token.trim();
+
+    const { data: orderRow, error: orderError } = await admin
+      .from("raffle_orders")
+      .select(
+        "id, raffle_id, buyer_name, buyer_phone, numbers, total_cents, status, expires_at, paid_at, created_at, pix_copy_paste, pix_qr_base64, raffles!inner(id, title, public_token)"
+      )
+      .eq("id", input.orderId)
+      .maybeSingle();
+
+    if (orderError) {
+      console.error("submitRafflePaymentProof order", orderError);
+      return {
+        ok: false,
+        message: orderError.message || "Não foi possível localizar o pedido.",
+      };
+    }
+    if (!orderRow) {
+      return { ok: false, message: "Pedido não encontrado." };
+    }
+
+    const raffleJoin = orderRow.raffles as
+      | { id?: string; title?: string; public_token?: string }
+      | { id?: string; title?: string; public_token?: string }[]
+      | null;
+    const raffle = Array.isArray(raffleJoin) ? raffleJoin[0] : raffleJoin;
+    if (!raffle?.public_token || raffle.public_token !== token) {
+      return { ok: false, message: "Pedido não pertence a esta rifa." };
+    }
+
+    const orderPhone = normalizePhone(String(orderRow.buyer_phone ?? ""));
+    const clientPhone = normalizePhone(input.buyerPhone);
+    const phone = clientPhone || orderPhone;
+    if (!phone) {
+      return { ok: false, message: "Informe o WhatsApp usado na compra." };
+    }
+    if (clientPhone && clientPhone !== orderPhone) {
+      return {
+        ok: false,
+        message: "Este pedido não pertence a este WhatsApp.",
+      };
+    }
+
     const { data, error } = await admin.rpc("attach_raffle_order_payment_proof", {
-      p_token: input.token.trim(),
+      p_token: token,
       p_order_id: input.orderId,
       p_phone: phone,
       p_payment_proof_url: url,
     });
 
     if (error) {
+      console.error("attach_raffle_order_payment_proof", error);
       return {
         ok: false,
         message: error.message || "Não foi possível enviar o comprovante.",
@@ -230,28 +274,12 @@ export async function submitRafflePaymentProof(input: {
       return { ok: false, message: "Não foi possível enviar o comprovante." };
     }
 
-    const { data: orderMeta, error: orderMetaError } = await admin
-      .from("raffle_orders")
-      .select("id, raffle_id, buyer_phone, raffles(id, title)")
-      .eq("id", input.orderId)
-      .maybeSingle();
-    if (orderMetaError) {
-      console.error("raffle_orders meta", orderMetaError);
-    }
-
-    const raffleJoin = orderMeta?.raffles as
-      | { id?: string; title?: string }
-      | { id?: string; title?: string }[]
-      | null
-      | undefined;
-    const raffle = Array.isArray(raffleJoin) ? raffleJoin[0] : raffleJoin;
-
     try {
       const pushed = await notifyStaffRafflePaymentProof({
         orderId: input.orderId,
-        phone,
-        raffleId: String(raffle?.id ?? orderMeta?.raffle_id ?? ""),
-        raffleTitle: String(raffle?.title ?? ""),
+        phone: orderPhone || phone,
+        raffleId: String(raffle.id ?? orderRow.raffle_id ?? ""),
+        raffleTitle: String(raffle.title ?? ""),
       });
       if (pushed < 1) {
         console.warn("Comprovante salvo, mas nenhum push Expo foi enviado.");
@@ -260,14 +288,26 @@ export async function submitRafflePaymentProof(input: {
       console.error("notifyStaffRafflePaymentProof", pushError);
     }
 
-    const lookup = await lookupRaffleOrdersByPhone(input.token, phone);
-    const order = lookup.orders.find((item) => item.id === input.orderId);
-
     return {
       ok: true,
-      order: order
-        ? { ...order, status: "pending_review", paymentProofUrl: url }
-        : undefined,
+      order: {
+        id: String(orderRow.id),
+        status: "pending_review",
+        numbers: Array.isArray(orderRow.numbers)
+          ? (orderRow.numbers as number[])
+          : [],
+        totalCents: Number(orderRow.total_cents ?? 0),
+        pixCopyPaste: String(orderRow.pix_copy_paste ?? ""),
+        pixQrBase64: String(orderRow.pix_qr_base64 ?? ""),
+        paymentProofUrl: url,
+        expiresAt:
+          orderRow.expires_at == null ? null : String(orderRow.expires_at),
+        paidAt: orderRow.paid_at == null ? null : String(orderRow.paid_at),
+        createdAt:
+          orderRow.created_at == null ? null : String(orderRow.created_at),
+        buyerPhone: orderPhone || phone,
+        buyerName: String(orderRow.buyer_name ?? ""),
+      },
       message: "Comprovante enviado com sucesso.",
     };
   } catch (error) {

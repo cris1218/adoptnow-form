@@ -37,6 +37,8 @@ export type BuyerOrder = {
   expiresAt: string | null;
   paidAt: string | null;
   createdAt: string | null;
+  buyerPhone?: string;
+  buyerName?: string;
 };
 
 export function formatCentsBrl(cents: number): string {
