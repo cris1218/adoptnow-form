@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState, type RefObject } from "react";
+import { useEffect, useRef, useState, type RefObject } from "react";
 
 import {
   FieldError,
@@ -10,6 +10,7 @@ import {
 import { fetchAddressByCep } from "@/lib/cep";
 import {
   identityAddressErrors,
+  normalizeIdentityAddress,
   type IdentityAddress,
 } from "@/lib/identityAddress";
 import { maskCep, maskCpf, onlyDigits } from "@/lib/masks";
@@ -33,21 +34,30 @@ const EMPTY: IdentityAddress = {
 
 export function IdentityAddressFields({
   initial,
+  documentMessage,
+  onDocumentComplete,
+  onChange,
 }: {
   initial?: Partial<IdentityAddress>;
+  documentMessage?: string | null;
+  onDocumentComplete?: (cpf: string) => void;
+  onChange?: (values: IdentityAddress) => void;
 }) {
-  const [values, setValues] = useState<IdentityAddress>(() => ({
-    ...EMPTY,
-    ...initial,
-    document: maskCpf(initial?.document ?? ""),
-    cep: maskCep(initial?.cep ?? ""),
-    state: (initial?.state ?? "").toUpperCase(),
-  }));
+  const [values, setValues] = useState<IdentityAddress>(() => {
+    const next = normalizeIdentityAddress({ ...EMPTY, ...initial });
+    return {
+      ...next,
+      document: maskCpf(next.document),
+      cep: maskCep(next.cep),
+    };
+  });
   const [touched, setTouched] = useState<Partial<Record<FieldName, boolean>>>(
     {}
   );
   const [cepHint, setCepHint] = useState("");
   const cepLookupSeq = useRef(0);
+  const onChangeRef = useRef(onChange);
+  onChangeRef.current = onChange;
 
   const errors = identityAddressErrors(values);
   const refs: Record<FieldName, RefObject<HTMLInputElement | null>> = {
@@ -59,6 +69,10 @@ export function IdentityAddressFields({
     city: useValidityMessage<HTMLInputElement>(errors.city),
     state: useValidityMessage<HTMLInputElement>(errors.state),
   };
+
+  useEffect(() => {
+    onChangeRef.current?.(normalizeIdentityAddress(values));
+  }, [values]);
 
   function setField(field: FieldName, value: string) {
     setValues((current) => ({ ...current, [field]: value }));
@@ -129,9 +143,28 @@ export function IdentityAddressFields({
           inputMode="numeric"
           autoComplete="off"
           placeholder="000.000.000-00"
-          onChange={(event) => setField("document", maskCpf(event.target.value))}
+          onChange={(event) =>
+            setField("document", maskCpf(event.target.value))
+          }
+          onBlur={() => {
+            setTouched((current) =>
+              current.document ? current : { ...current, document: true }
+            );
+            const digits = onlyDigits(values.document);
+            if (digits.length === 11) {
+              onDocumentComplete?.(digits);
+            }
+          }}
         />
         <FieldError id="document-error" message={visibleError("document")} />
+        {documentMessage ? (
+          <p
+            role="alert"
+            className="mt-2 rounded-xl bg-amber-50 px-3 py-2 text-sm font-medium leading-relaxed text-amber-950"
+          >
+            {documentMessage}
+          </p>
+        ) : null}
       </div>
 
       <div>

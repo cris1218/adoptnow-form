@@ -65,3 +65,41 @@ export function parseIdentityAddress(formData: FormData): {
     Object.values(identityAddressErrors(values)).find(Boolean) ?? "";
   return { values, error };
 }
+
+export function normalizeIdentityAddress(
+  values: Partial<IdentityAddress> | null | undefined
+): IdentityAddress {
+  return {
+    document: onlyDigits(values?.document ?? ""),
+    cep: onlyDigits(values?.cep ?? ""),
+    street: (values?.street ?? "").trim(),
+    neighborhood: (values?.neighborhood ?? "").trim(),
+    number: (values?.number ?? "").trim(),
+    city: (values?.city ?? "").trim(),
+    state: (values?.state ?? "").trim().toUpperCase(),
+  };
+}
+
+export function isIdentityAddressComplete(values: IdentityAddress): boolean {
+  return Object.values(identityAddressErrors(values)).every((error) => !error);
+}
+
+export function identityAddressesEqual(
+  left: IdentityAddress,
+  right: IdentityAddress
+): boolean {
+  const a = normalizeIdentityAddress(left);
+  const b = normalizeIdentityAddress(right);
+  return (
+    a.cep.length === 8 &&
+    b.cep.length === 8 &&
+    a.cep === b.cep &&
+    a.street.toLowerCase() === b.street.toLowerCase() &&
+    a.neighborhood.toLowerCase() === b.neighborhood.toLowerCase() &&
+    a.number.toLowerCase() === b.number.toLowerCase() &&
+    a.city.toLowerCase() === b.city.toLowerCase() &&
+    a.state === b.state &&
+    a.street.length > 0 &&
+    b.street.length > 0
+  );
+}

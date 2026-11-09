@@ -8,12 +8,21 @@ import {
   DOCUMENT_NOT_RECOGNIZED_MESSAGE,
   verifiedDocumentCheck,
   verifyDocumentForForm,
+  type DocumentCheckStatus,
   type DocumentPhotoVerification,
 } from "@/lib/documentCheck";
+import {
+  identityAddressesEqual,
+  isIdentityAddressComplete,
+  normalizeIdentityAddress,
+  type IdentityAddress,
+} from "@/lib/identityAddress";
 import { getSupabaseServer } from "@/lib/supabase";
-import { isValidPhone, normalizePhone } from "@/lib/masks";
+import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
+import { isValidCpf, isValidPhone, normalizePhone, onlyDigits } from "@/lib/masks";
 import {
   notifyStaffExclusiveCatInterest,
+  notifyStaffKnownPersonAutoApproved,
   notifyStaffPotentialAdopter,
 } from "@/lib/notifyStaff";
 import { parseAnswers, toInsertRow } from "@/lib/questionnaire";
@@ -23,55 +32,140 @@ export type FormState = {
   message: string;
 } | null;
 
-const PHONE_PENDING_MESSAGE =
-  "Este WhatsApp já possui cadastro como interessado. Aguarde a avaliação da equipe do Recanto do Ron Ron.";
+const CPF_PENDING_MESSAGE =
+  "Este CPF já possui cadastro como interessado. Aguarde a avaliação da equipe do Recanto do Ron Ron.";
 
-const PHONE_APPROVED_MESSAGE =
-  "Este WhatsApp já foi aprovado. Aguarde que entraremos em contato.";
+const CPF_APPROVED_MESSAGE =
+  "Este CPF já foi aprovado. Aguarde que entraremos em contato.";
 
-const PHONE_DENIED_MESSAGE =
-  "Já existe um cadastro de interesse com este WhatsApp. Estamos avaliando e entraremos em contato.";
+const CPF_DENIED_MESSAGE =
+  "Já existe um cadastro de interesse com este CPF. Estamos avaliando e entraremos em contato.";
 
-export async function checkPotentialAdopterPhone(
-  rawPhone: string,
+export type KnownFormPerson = {
+  known: true;
+  kind: "adopter" | "approved";
+  adopterId: string | null;
+  fullName: string;
+  phone: string;
+  document: string;
+  documentPhotoUrl: string;
+  documentCheckStatus: string;
+  address: IdentityAddress;
+};
+
+export type LookupFormPersonByCpfResult =
+  | { known: false }
+  | KnownFormPerson;
+
+type KnownPersonPayload = {
+  known?: boolean;
+  kind?: string;
+  adopterId?: string | null;
+  fullName?: string;
+  phone?: string;
+  document?: string;
+  documentPhotoUrl?: string;
+  documentCheckStatus?: string;
+  address?: Partial<IdentityAddress> | null;
+};
+
+function mapKnownPerson(payload: KnownPersonPayload | null): LookupFormPersonByCpfResult {
+  if (!payload?.known) return { known: false };
+
+  const kind = payload.kind === "adopter" ? "adopter" : "approved";
+  const address = normalizeIdentityAddress(payload.address ?? undefined);
+  return {
+    known: true,
+    kind,
+    adopterId:
+      typeof payload.adopterId === "string" && payload.adopterId.trim()
+        ? payload.adopterId.trim()
+        : null,
+    fullName: String(payload.fullName ?? "").trim(),
+    phone: normalizePhone(String(payload.phone ?? "")),
+    document: onlyDigits(String(payload.document ?? "")),
+    documentPhotoUrl: String(payload.documentPhotoUrl ?? "").trim(),
+    documentCheckStatus: String(payload.documentCheckStatus ?? "").trim(),
+    address,
+  };
+}
+
+export async function checkPotentialAdopterCpf(
+  rawCpf: string,
   catId?: string
-): Promise<{ exists: boolean; message?: string }> {
-  const phone = normalizePhone(rawPhone);
-  if (!isValidPhone(phone)) {
-    return { exists: false };
+): Promise<{ blocked: boolean; message?: string }> {
+  const cpf = onlyDigits(rawCpf);
+  if (!isValidCpf(cpf)) {
+    return { blocked: false };
   }
 
   try {
     const supabase = getSupabaseServer();
     const { data, error } = await supabase.rpc(
-      "get_potential_adopter_phone_status",
+      "get_potential_adopter_cpf_status",
       {
-        p_phone: phone,
+        p_cpf: cpf,
         ...(catId ? { p_cat_id: catId } : {}),
       }
     );
 
     if (error) {
-      console.error("Falha ao validar telefone do interessado:", error);
-      return { exists: false };
+      console.error("Falha ao validar CPF do interessado:", error);
+      return { blocked: false };
     }
 
     const status = typeof data === "string" ? data.trim() : "";
     if (status === "aprovado") {
-      return { exists: true, message: PHONE_APPROVED_MESSAGE };
+      return { blocked: true, message: CPF_APPROVED_MESSAGE };
     }
     if (status === "pendente") {
-      return { exists: true, message: PHONE_PENDING_MESSAGE };
+      return { blocked: true, message: CPF_PENDING_MESSAGE };
     }
     if (status === "negado") {
-      return { exists: true, message: PHONE_DENIED_MESSAGE };
+      return { blocked: true, message: CPF_DENIED_MESSAGE };
     }
 
-    return { exists: false };
+    return { blocked: false };
   } catch (error) {
-    console.error("Falha ao validar telefone do interessado:", error);
-    return { exists: false };
+    console.error("Falha ao validar CPF do interessado:", error);
+    return { blocked: false };
   }
+}
+
+export async function lookupFormPersonByCpf(
+  rawCpf: string
+): Promise<LookupFormPersonByCpfResult> {
+  const cpf = onlyDigits(rawCpf);
+  if (!isValidCpf(cpf)) {
+    return { known: false };
+  }
+
+  try {
+    const supabase = getSupabaseServer();
+    const { data, error } = await supabase.rpc("lookup_form_person_by_cpf", {
+      p_cpf: cpf,
+    });
+
+    if (error) {
+      console.error("Falha ao buscar pessoa conhecida pelo CPF:", error);
+      return { known: false };
+    }
+
+    return mapKnownPerson((data ?? null) as KnownPersonPayload | null);
+  } catch (error) {
+    console.error("Falha ao buscar pessoa conhecida pelo CPF:", error);
+    return { known: false };
+  }
+}
+
+/** @deprecated Use checkPotentialAdopterCpf. Mantido só se algum trecho antigo ainda importar. */
+export async function checkPotentialAdopterPhone(
+  rawPhone: string,
+  catId?: string
+): Promise<{ exists: boolean; message?: string }> {
+  void rawPhone;
+  void catId;
+  return { exists: false };
 }
 
 export async function verifyLeadDocumentPhoto(
@@ -116,29 +210,75 @@ export async function savePotentialAdopter(
     return { ok: false, message: "Informe um telefone válido com DDD." };
   }
 
+  const cpf = onlyDigits(String(formData.get("document") ?? ""));
+  if (!isValidCpf(cpf)) {
+    return { ok: false, message: "Informe um CPF válido." };
+  }
+
   const lockedCatId = String(formData.get("exclusiveCatId") ?? "").trim();
-  const phoneCheck = await checkPotentialAdopterPhone(
-    phone,
+  const cpfCheck = await checkPotentialAdopterCpf(
+    cpf,
     exclusive ? lockedCatId : undefined
   );
-  if (phoneCheck.exists) {
+  if (cpfCheck.blocked) {
     return {
       ok: false,
-      message: phoneCheck.message ?? PHONE_PENDING_MESSAGE,
+      message: cpfCheck.message ?? CPF_PENDING_MESSAGE,
     };
   }
 
-  const parsed = parseAnswers(formData, phone);
+  const knownPerson = await lookupFormPersonByCpf(cpf);
+  const known = knownPerson.known;
+  const knownDocumentPhotoUrl = known
+    ? knownPerson.documentPhotoUrl.trim()
+    : "";
+  const addressSame =
+    known &&
+    isIdentityAddressComplete(knownPerson.address) &&
+    identityAddressesEqual(
+      knownPerson.address,
+      normalizeIdentityAddress({
+        document: cpf,
+        cep: String(formData.get("cep") ?? ""),
+        street: String(formData.get("street") ?? ""),
+        neighborhood: String(formData.get("neighborhood") ?? ""),
+        number: String(formData.get("number") ?? ""),
+        city: String(formData.get("city") ?? ""),
+        state: String(formData.get("state") ?? ""),
+      })
+    );
+  const skipDocumentPhoto = Boolean(knownDocumentPhotoUrl);
+  const skipHomeVideo = known && addressSame;
+  const autoApprove = known && addressSame;
+
+  const parsed = parseAnswers(formData, phone, {
+    requireDocumentPhoto: !skipDocumentPhoto,
+    requireHomeVideo: !skipHomeVideo,
+    knownDocumentPhotoUrl,
+  });
   if (parsed.error || !parsed.answers) {
     return { ok: false, message: parsed.error ?? "Revise as respostas." };
   }
 
-  const documentCheck = verifiedDocumentCheck(
-    parsed.answers.documentPhotoUrl,
-    String(formData.get("documentCheckProof") ?? "").trim()
-  );
-  if (!documentCheck) {
-    return { ok: false, message: DOCUMENT_NOT_RECOGNIZED_MESSAGE };
+  if (onlyDigits(parsed.answers.identity.document) !== cpf) {
+    return { ok: false, message: "Confira o CPF informado." };
+  }
+
+  let documentCheck: { status: DocumentCheckStatus; reason: string };
+  if (skipDocumentPhoto) {
+    documentCheck = {
+      status: "verificado",
+      reason: "cadastro_conhecido",
+    };
+  } else {
+    const verified = verifiedDocumentCheck(
+      parsed.answers.documentPhotoUrl,
+      String(formData.get("documentCheckProof") ?? "").trim()
+    );
+    if (!verified) {
+      return { ok: false, message: DOCUMENT_NOT_RECOGNIZED_MESSAGE };
+    }
+    documentCheck = verified;
   }
 
   try {
@@ -201,12 +341,33 @@ export async function savePotentialAdopter(
       interestedCatOther: exclusiveCat ? false : parsed.answers.interestedCatOther,
     };
 
-    const { error } = await supabase
+    const insertClient =
+      skipHomeVideo || skipDocumentPhoto
+        ? getSupabaseAdmin() ?? supabase
+        : supabase;
+
+    if ((skipHomeVideo || skipDocumentPhoto) && insertClient === supabase) {
+      console.warn(
+        "Pessoa conhecida sem SUPABASE_SERVICE_ROLE_KEY; insert pode falhar na política do vídeo."
+      );
+    }
+
+    const { error } = await insertClient
       .from("potential_adopters")
       .insert(toInsertRow(answers, documentCheck));
 
     if (error) {
       console.error("Erro ao salvar possível adotante:", error);
+      const message = String(error.message ?? "");
+      if (message.includes("Já está na lista") || message.includes("já está na lista")) {
+        return { ok: false, message: CPF_APPROVED_MESSAGE };
+      }
+      if (message.includes("em análise")) {
+        return { ok: false, message: CPF_PENDING_MESSAGE };
+      }
+      if (message.includes("Não é possível se cadastrar")) {
+        return { ok: false, message: CPF_DENIED_MESSAGE };
+      }
       return {
         ok: false,
         message: "Não foi possível enviar agora. Tente novamente em instantes.",
@@ -225,7 +386,12 @@ export async function savePotentialAdopter(
     }
 
     try {
-      if (exclusive) {
+      if (autoApprove) {
+        await notifyStaffKnownPersonAutoApproved(
+          parsed.answers.fullName,
+          answers.interestedCatName
+        );
+      } else if (exclusive) {
         await notifyStaffExclusiveCatInterest(
           parsed.answers.fullName,
           answers.interestedCatName,
@@ -244,8 +410,9 @@ export async function savePotentialAdopter(
 
     return {
       ok: true,
-      message:
-        "Obrigada pelo interesse. A equipe do Recanto do Ron Ron entra em contato pelo WhatsApp.",
+      message: autoApprove
+        ? "Recebemos seu interesse. Como seu cadastro já era conhecido e o endereço é o mesmo, você já ficou aprovado. Em breve falamos pelo WhatsApp."
+        : "Obrigada pelo interesse. A equipe do Recanto do Ron Ron entra em contato pelo WhatsApp.",
     };
   } catch (error) {
     console.error("Erro inesperado ao salvar possível adotante:", error);

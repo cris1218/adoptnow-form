@@ -1,13 +1,15 @@
 "use client";
 
-import { useActionState, useEffect, useRef, useState } from "react";
+import { useActionState, useEffect, useMemo, useRef, useState } from "react";
 
 import {
-  checkPotentialAdopterPhone,
+  checkPotentialAdopterCpf,
   loadAvailableAdoptionCats,
+  lookupFormPersonByCpf,
   savePotentialAdopter,
   verifyLeadDocumentPhoto,
   type FormState,
+  type KnownFormPerson,
 } from "@/app/actions";
 import { DocumentPhotoField } from "@/components/DocumentPhotoField";
 import { IdentityAddressFields } from "@/components/IdentityAddressFields";
@@ -30,10 +32,17 @@ import {
   type AvailableAdoptionCat,
 } from "@/lib/availableCats";
 import {
+  identityAddressesEqual,
+  isIdentityAddressComplete,
+  normalizeIdentityAddress,
+  type IdentityAddress,
+} from "@/lib/identityAddress";
+import {
   fullNameError,
   isValidPhone,
   maskPhone,
   normalizePhone,
+  onlyDigits,
 } from "@/lib/masks";
 import {
   INTERESTED_CAT_OTHER,
@@ -48,6 +57,16 @@ const yesNo = [
   { value: "sim", label: "Sim" },
   { value: "nao", label: "Não" },
 ] as const;
+
+const EMPTY_ADDRESS: IdentityAddress = {
+  document: "",
+  cep: "",
+  street: "",
+  neighborhood: "",
+  number: "",
+  city: "",
+  state: "",
+};
 
 export function AdoptionLeadForm({
   token,
@@ -69,7 +88,6 @@ export function AdoptionLeadForm({
   const nameError = fullNameError(fullName);
   const fullNameRef = useValidityMessage<HTMLInputElement>(nameError);
   const [phone, setPhone] = useState("");
-  const [phoneError, setPhoneError] = useState<string | null>(null);
   const phoneRef = useValidityMessage<HTMLInputElement>(
     !phone
       ? "Informe seu WhatsApp."
@@ -77,8 +95,16 @@ export function AdoptionLeadForm({
         ? ""
         : "Informe um WhatsApp válido com DDD."
   );
-  const [checkingPhone, setCheckingPhone] = useState(false);
-  const phoneCheckSeq = useRef(0);
+  const [cpfError, setCpfError] = useState<string | null>(null);
+  const [checkingCpf, setCheckingCpf] = useState(false);
+  const cpfCheckSeq = useRef(0);
+  const [knownPerson, setKnownPerson] = useState<KnownFormPerson | null>(null);
+  const [identitySeed, setIdentitySeed] = useState(0);
+  const [identityInitial, setIdentityInitial] = useState<
+    Partial<IdentityAddress>
+  >({});
+  const [currentAddress, setCurrentAddress] =
+    useState<IdentityAddress>(EMPTY_ADDRESS);
   const [availableCats, setAvailableCats] = useState<AvailableAdoptionCat[]>(
     lockedCat ? [lockedCat] : []
   );
@@ -99,6 +125,28 @@ export function AdoptionLeadForm({
   const [sexPreference, setSexPreference] = useState<SexPreference | "">("");
   const [photoBusy, setPhotoBusy] = useState(false);
 
+  const baselineCep = knownPerson
+    ? onlyDigits(knownPerson.address.cep)
+    : "";
+  const currentCep = onlyDigits(currentAddress.cep);
+  const cepChanged = Boolean(
+    knownPerson && baselineCep.length === 8 && currentCep !== baselineCep
+  );
+
+  const addressUnchanged = useMemo(() => {
+    if (!knownPerson) return false;
+    if (!isIdentityAddressComplete(knownPerson.address)) return false;
+    return identityAddressesEqual(knownPerson.address, currentAddress);
+  }, [knownPerson, currentAddress]);
+
+  const skipDocumentPhoto = Boolean(
+    knownPerson?.documentPhotoUrl?.trim()
+  );
+  const skipHomeVideo = Boolean(
+    knownPerson && addressUnchanged && !cepChanged
+  );
+  const cpfBlocked = Boolean(cpfError);
+
   useEffect(() => {
     if (lockedCat) return;
 
@@ -117,37 +165,54 @@ export function AdoptionLeadForm({
     };
   }, [lockedCat]);
 
-  async function validatePhone(rawPhone: string) {
-    const normalized = normalizePhone(rawPhone);
-    if (!isValidPhone(normalized)) {
-      setPhoneError(null);
-      return;
-    }
-
+  async function handleDocumentComplete(cpf: string) {
     if (preview) {
-      setPhoneError(null);
+      setCpfError(null);
+      setKnownPerson(null);
       return;
     }
 
-    const seq = ++phoneCheckSeq.current;
-    setCheckingPhone(true);
+    const seq = ++cpfCheckSeq.current;
+    setCheckingCpf(true);
     try {
-      const result = await checkPotentialAdopterPhone(
-        normalized,
-        lockedCat?.id
-      );
-      if (seq !== phoneCheckSeq.current) return;
-      setPhoneError(result.exists ? (result.message ?? null) : null);
+      const [status, lookup] = await Promise.all([
+        checkPotentialAdopterCpf(cpf, lockedCat?.id),
+        lookupFormPersonByCpf(cpf),
+      ]);
+      if (seq !== cpfCheckSeq.current) return;
+
+      setCpfError(status.blocked ? (status.message ?? null) : null);
+
+      if (!lookup.known) {
+        setKnownPerson(null);
+        return;
+      }
+
+      setKnownPerson(lookup);
+      if (lookup.fullName) {
+        setFullName(lookup.fullName);
+        setFullNameTouched(true);
+      }
+      if (lookup.phone && isValidPhone(lookup.phone)) {
+        setPhone(maskPhone(lookup.phone));
+      }
+
+      const nextAddress = normalizeIdentityAddress({
+        ...lookup.address,
+        document: cpf,
+      });
+      setIdentityInitial(nextAddress);
+      setCurrentAddress(nextAddress);
+      setIdentitySeed((value) => value + 1);
     } finally {
-      if (seq === phoneCheckSeq.current) {
-        setCheckingPhone(false);
+      if (seq === cpfCheckSeq.current) {
+        setCheckingCpf(false);
       }
     }
   }
 
   const hadAnimals = hadCats || hadDogs;
   const selectedCat = availableCats.find((cat) => cat.id === interestedCatId);
-  const phoneBlocked = Boolean(phoneError);
 
   function selectNeverHad(next: boolean) {
     setNeverHadAnimals(next);
@@ -209,7 +274,7 @@ export function AdoptionLeadForm({
               event.preventDefault();
             }
           : (event) => {
-              if (phoneBlocked || checkingPhone) {
+              if (cpfBlocked || checkingCpf) {
                 event.preventDefault();
               }
             }
@@ -299,46 +364,59 @@ export function AdoptionLeadForm({
           autoComplete="tel-national"
           placeholder="(51) 99999-0000"
           value={phone}
-          aria-invalid={phoneBlocked || undefined}
-          aria-describedby={phoneBlocked ? "phone-error" : undefined}
           onChange={(event) => {
             setPhone(maskPhone(event.target.value));
-            setPhoneError(null);
-          }}
-          onBlur={() => {
-            void validatePhone(phone);
           }}
           className={`h-14 w-full rounded-2xl border bg-white px-4 text-base text-stone-900 outline-none ring-brand-light placeholder:text-stone-400 focus:ring-2 ${fieldBorderClass(
-            phoneBlocked
+            Boolean(phone) && !isValidPhone(normalizePhone(phone))
           )}`}
         />
-        {phoneError ? (
-          <p
-            id="phone-error"
-            role="alert"
-            className="mt-2 rounded-xl bg-amber-50 px-3 py-2 text-sm font-medium leading-relaxed text-amber-950"
-          >
-            {phoneError}
-          </p>
-        ) : null}
       </div>
 
-      <IdentityAddressFields />
-
-      <DocumentPhotoField
-        required
-        onBusyChange={setPhotoBusy}
-        checkDocument={
-          preview
-            ? undefined
-            : (url) =>
-                verifyLeadDocumentPhoto(
-                  token,
-                  exclusive ? "exclusive" : "phone",
-                  url
-                )
-        }
+      <IdentityAddressFields
+        key={`identity-${identitySeed}`}
+        initial={identityInitial}
+        documentMessage={cpfError}
+        onDocumentComplete={(cpf) => {
+          void handleDocumentComplete(cpf);
+        }}
+        onChange={setCurrentAddress}
       />
+
+      {knownPerson ? (
+        <p className="rounded-xl bg-teal-50 px-3 py-2 text-sm font-medium leading-relaxed text-teal-950">
+          Encontramos seu cadastro pelo CPF. Conferimos nome, WhatsApp e
+          endereço — você pode ajustar se algo mudou.
+          {skipHomeVideo
+            ? " Como o endereço é o mesmo, não pedimos documento nem vídeo de novo. Se alterar o CEP, pedimos o vídeo do local."
+            : cepChanged
+              ? " Como o CEP mudou, envie o vídeo do local atual."
+              : " Como o endereço mudou, pedimos só o vídeo do local atual."}
+        </p>
+      ) : null}
+
+      {skipDocumentPhoto ? (
+        <input
+          type="hidden"
+          name="documentPhotoUrl"
+          value={knownPerson?.documentPhotoUrl ?? ""}
+        />
+      ) : (
+        <DocumentPhotoField
+          required
+          onBusyChange={setPhotoBusy}
+          checkDocument={
+            preview
+              ? undefined
+              : (url) =>
+                  verifyLeadDocumentPhoto(
+                    token,
+                    exclusive ? "exclusive" : "phone",
+                    url
+                  )
+          }
+        />
+      )}
 
       <div>
         <label
@@ -360,34 +438,34 @@ export function AdoptionLeadForm({
             {lockedCat.name}
           </p>
         ) : (
-        <SearchableSelect
-          id="interestedCatId"
-          name="interestedCatId"
-          value={interestedCatId}
-          onChange={setInterestedCatId}
-          disabled={loadingCats}
-          required={!loadingCats}
-          placeholder={
-            loadingCats ? "Carregando gatinhos..." : "Selecione o gatinho"
-          }
-          searchPlaceholder="Buscar gatinho..."
-          emptyMessage="Nenhum gatinho encontrado"
-          options={availableCats.map((cat) => ({
-            value: cat.id,
-            label: cat.name,
-            description: [
-              cat.sex ? formatCatSex(cat.sex) : null,
-              cat.quarantineReleasedAt ? "quarentena" : null,
-            ]
-              .filter(Boolean)
-              .join(" · "),
-          }))}
-          fallbackOption={{
-            value: INTERESTED_CAT_OTHER,
-            label: INTERESTED_CAT_OTHER_LABEL,
-            description: "Não está na lista",
-          }}
-        />
+          <SearchableSelect
+            id="interestedCatId"
+            name="interestedCatId"
+            value={interestedCatId}
+            onChange={setInterestedCatId}
+            disabled={loadingCats}
+            required={!loadingCats}
+            placeholder={
+              loadingCats ? "Carregando gatinhos..." : "Selecione o gatinho"
+            }
+            searchPlaceholder="Buscar gatinho..."
+            emptyMessage="Nenhum gatinho encontrado"
+            options={availableCats.map((cat) => ({
+              value: cat.id,
+              label: cat.name,
+              description: [
+                cat.sex ? formatCatSex(cat.sex) : null,
+                cat.quarantineReleasedAt ? "quarentena" : null,
+              ]
+                .filter(Boolean)
+                .join(" · "),
+            }))}
+            fallbackOption={{
+              value: INTERESTED_CAT_OTHER,
+              label: INTERESTED_CAT_OTHER_LABEL,
+              description: "Não está na lista",
+            }}
+          />
         )}
         {interestedCatId === INTERESTED_CAT_OTHER ? (
           <input
@@ -515,7 +593,26 @@ export function AdoptionLeadForm({
         />
       </Question>
 
-      <HomeVideoField />
+      {skipHomeVideo ? (
+        <section className="rounded-2xl bg-brand-bg/70 p-4 compact:px-2">
+          <input type="hidden" name="homeVideoUrl" value="" />
+          <input type="hidden" name="willSendVideoWhatsapp" value="" />
+          <label className="flex items-center gap-3 rounded-2xl border border-stone-300 bg-white p-4 compact:px-2">
+            <input
+              type="checkbox"
+              name="agreedHomeSafe"
+              value="true"
+              required
+              className="h-5 w-5 shrink-0 accent-[#148B87]"
+            />
+            <span className="text-sm leading-snug text-stone-700">
+              Concordo que a residência é segura para a adoção
+            </span>
+          </label>
+        </section>
+      ) : (
+        <HomeVideoField />
+      )}
 
       <Question
         number={6}
@@ -604,9 +701,10 @@ export function AdoptionLeadForm({
           className="mt-1 h-5 w-5 shrink-0 accent-[#148B87]"
         />
         <span className="text-sm leading-relaxed text-stone-700">
-          Li as regras e concordo em seguir: lar seguro com telas, envio do
-          vídeo do local e o repasse dos custos de castração, vermífugo,
-          antipulgas e possíveis testes clínicos.
+          Li as regras e concordo em seguir: lar seguro com telas
+          {skipHomeVideo ? "" : ", envio do vídeo do local"} e o repasse dos
+          custos de castração, vermífugo, antipulgas e possíveis testes
+          clínicos.
         </span>
       </label>
 
@@ -670,9 +768,9 @@ export function AdoptionLeadForm({
             preview ||
             pending ||
             loadingCats ||
-            phoneBlocked ||
-            checkingPhone ||
-            photoBusy
+            cpfBlocked ||
+            checkingCpf ||
+            (!skipDocumentPhoto && photoBusy)
           }
           className="flex h-14 w-full items-center justify-center rounded-2xl bg-brand-dark text-lg font-semibold text-white shadow-sm transition active:scale-[0.99] enabled:hover:bg-brand-950 disabled:opacity-60"
         >
@@ -680,9 +778,9 @@ export function AdoptionLeadForm({
             ? "Envio desativado"
             : pending
               ? "Enviando..."
-              : checkingPhone
-                ? "Validando WhatsApp..."
-                : photoBusy
+              : checkingCpf
+                ? "Validando CPF..."
+                : !skipDocumentPhoto && photoBusy
                   ? "Processando foto..."
                   : loadingCats
                     ? "Carregando..."

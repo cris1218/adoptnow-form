@@ -138,3 +138,24 @@ export async function notifyStaffAdopterCompletion(
     },
   });
 }
+
+export async function notifyStaffKnownPersonAutoApproved(
+  fullName: string,
+  interestedCatName: string
+): Promise<void> {
+  const firstName = getFirstName(fullName) || "Alguém";
+  const catName = interestedCatName.trim();
+  const interest = catName
+    ? `${firstName} tem interesse em ${catName}.`
+    : `${firstName} tem interesse em adotar um gatinho.`;
+
+  await notifyStaff({
+    title: "Interessado aprovado",
+    body: `${interest} CPF já conhecido, mesmo endereço — aprovado automaticamente.`,
+    data: {
+      type: "potential-adopter-auto-approved",
+      fullName,
+      interestedCatName: catName,
+    },
+  });
+}

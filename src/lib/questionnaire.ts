@@ -106,10 +106,19 @@ export function documentPhotoError(url: string): string {
   return "";
 }
 
+export type ParseAnswersOptions = {
+  requireDocumentPhoto?: boolean;
+  requireHomeVideo?: boolean;
+  knownDocumentPhotoUrl?: string;
+};
+
 export function parseAnswers(
   formData: FormData,
-  phone: string
+  phone: string,
+  options: ParseAnswersOptions = {}
 ): { answers?: AdoptionAnswers; error?: string } {
+  const requireDocumentPhoto = options.requireDocumentPhoto !== false;
+  const requireHomeVideo = options.requireHomeVideo !== false;
   const fullName = normalizeFullName(String(formData.get("fullName") ?? ""));
   const neverHadAnimals = parseCheckbox(formData.get("neverHadAnimals"));
   const hadCats = parseCheckbox(formData.get("hadCats"));
@@ -155,10 +164,20 @@ export function parseAnswers(
     return { error: identityError };
   }
 
-  const documentPhotoUrl = String(formData.get("documentPhotoUrl") ?? "").trim();
-  const photoError = documentPhotoError(documentPhotoUrl);
-  if (photoError) {
-    return { error: photoError };
+  const uploadedDocumentPhotoUrl = String(
+    formData.get("documentPhotoUrl") ?? ""
+  ).trim();
+  const documentPhotoUrl = uploadedDocumentPhotoUrl || (options.knownDocumentPhotoUrl ?? "").trim();
+  if (requireDocumentPhoto) {
+    const photoError = documentPhotoError(documentPhotoUrl);
+    if (photoError) {
+      return { error: photoError };
+    }
+  } else if (!documentPhotoUrl) {
+    return {
+      error:
+        "Não encontramos a foto do documento deste CPF. Envie a foto do documento.",
+    };
   }
 
   if (!interestedCatIdRaw) {
@@ -235,8 +254,15 @@ export function parseAnswers(
     };
   }
 
-  if (!willSendVideoWhatsapp && !isFormVideoUrl(homeVideoUrl)) {
-    return { error: "Envie o vídeo do local (até 1 minuto) ou marque que vai enviar pelo WhatsApp." };
+  if (
+    requireHomeVideo &&
+    !willSendVideoWhatsapp &&
+    !isFormVideoUrl(homeVideoUrl)
+  ) {
+    return {
+      error:
+        "Envie o vídeo do local (até 1 minuto) ou marque que vai enviar pelo WhatsApp.",
+    };
   }
 
   if (!parseCheckbox(formData.get("agreedToLgpd"))) {
@@ -268,8 +294,9 @@ export function parseAnswers(
       agreedToCosts,
       agreedToResponsibilityTerm,
       agreedHomeSafe,
-      willSendVideoWhatsapp,
-      homeVideoUrl: willSendVideoWhatsapp ? "" : homeVideoUrl,
+      willSendVideoWhatsapp: requireHomeVideo ? willSendVideoWhatsapp : false,
+      homeVideoUrl:
+        requireHomeVideo && !willSendVideoWhatsapp ? homeVideoUrl : "",
       identity,
       documentPhotoUrl,
     },
