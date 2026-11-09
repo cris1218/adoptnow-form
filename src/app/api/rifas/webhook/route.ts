@@ -17,14 +17,7 @@ type OrderRow = {
   buyer_phone: string;
   numbers: number[] | null;
   total_cents: number;
-  raffles: { title: string | null } | { title: string | null }[] | null;
 };
-
-function raffleTitle(row: OrderRow): string {
-  const raffles = row.raffles;
-  if (Array.isArray(raffles)) return raffles[0]?.title?.trim() || "Rifa";
-  return raffles?.title?.trim() || "Rifa";
-}
 
 function approvedMessage(title: string, numbers: number[]): string {
   return [
@@ -38,11 +31,10 @@ async function notifyAfterPaid(orderId: string) {
   const admin = getSupabaseAdmin();
   if (!admin) return { push: false, whatsapp: false };
 
+  // Sem embed: há mais de uma FK entre raffle_orders e raffles (ex. drawn_order_id).
   const { data, error } = await admin
     .from("raffle_orders")
-    .select(
-      "id, raffle_id, buyer_name, buyer_phone, numbers, total_cents, raffles(title)"
-    )
+    .select("id, raffle_id, buyer_name, buyer_phone, numbers, total_cents")
     .eq("id", orderId)
     .maybeSingle();
 
@@ -52,7 +44,12 @@ async function notifyAfterPaid(orderId: string) {
   }
 
   const row = data as OrderRow;
-  const title = raffleTitle(row);
+  const { data: raffleRow } = await admin
+    .from("raffles")
+    .select("title")
+    .eq("id", row.raffle_id)
+    .maybeSingle();
+  const title = String(raffleRow?.title ?? "").trim() || "Rifa";
   const numbers = Array.isArray(row.numbers) ? row.numbers : [];
   const buyerName = row.buyer_name?.trim() || "Alguém";
   const buyerPhone = row.buyer_phone?.trim() || "";
@@ -70,6 +67,7 @@ async function notifyAfterPaid(orderId: string) {
       totalCents: row.total_cents,
     });
     push = sent > 0;
+    console.log("notifyAfterPaid push", { orderId, sent });
   } catch (err) {
     console.error("notifyStaffRafflePaid", err);
   }
