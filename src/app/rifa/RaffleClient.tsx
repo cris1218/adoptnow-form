@@ -277,7 +277,14 @@ export function RaffleClient({
     });
   }
 
+  function canOpenOrderFromModal(order: BuyerOrder) {
+    return (
+      order.status === "awaiting_payment" || order.status === "pending_review"
+    );
+  }
+
   function openOrderFromModal(order: BuyerOrder) {
+    if (!canOpenOrderFromModal(order)) return;
     setOrdersModalOpen(false);
     const phone = order.buyerPhone || lookupPhone;
     setActiveOrder({ ...order, buyerPhone: phone });
@@ -518,13 +525,12 @@ export function RaffleClient({
 
             <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
               <ul className="space-y-3">
-                {orders.map((order) => (
-                  <li key={order.id}>
-                    <button
-                      type="button"
-                      className="w-full cursor-pointer rounded-[1.35rem] border border-white/80 bg-white/95 px-4 py-4 text-left shadow-[0_10px_28px_rgba(14,90,88,0.08)] transition hover:border-brand-light/50 hover:shadow-[0_14px_32px_rgba(14,90,88,0.14)] active:scale-[0.99]"
-                      onClick={() => openOrderFromModal(order)}
-                    >
+                {orders.map((order) => {
+                  const actionable = canOpenOrderFromModal(order);
+                  const cardClass =
+                    "w-full rounded-[1.35rem] border border-white/80 bg-white/95 px-4 py-4 text-left shadow-[0_10px_28px_rgba(14,90,88,0.08)]";
+                  const content = (
+                    <>
                       <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0">
                           <p className="truncate text-base font-bold text-stone-900">
@@ -555,9 +561,30 @@ export function RaffleClient({
                           Toque para ver o Pix e anexar o comprovante
                         </p>
                       ) : null}
-                    </button>
-                  </li>
-                ))}
+                      {order.status === "pending_review" ? (
+                        <p className="mt-3 text-xs font-medium text-amber-800">
+                          Toque para ver o status da análise
+                        </p>
+                      ) : null}
+                    </>
+                  );
+
+                  return (
+                    <li key={order.id}>
+                      {actionable ? (
+                        <button
+                          type="button"
+                          className={`${cardClass} cursor-pointer transition hover:border-brand-light/50 hover:shadow-[0_14px_32px_rgba(14,90,88,0.14)] active:scale-[0.99]`}
+                          onClick={() => openOrderFromModal(order)}
+                        >
+                          {content}
+                        </button>
+                      ) : (
+                        <div className={cardClass}>{content}</div>
+                      )}
+                    </li>
+                  );
+                })}
               </ul>
             </div>
 
