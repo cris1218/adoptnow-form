@@ -446,9 +446,21 @@ export function RaffleClient({
           </p>
         ) : null}
         {raffle.status === "drawn" ? (
-          <p className="mt-2 text-sm text-emerald-800">
-            Sorteado foi o número {raffle.drawnNumber}.
-          </p>
+          <div className="mt-3 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3">
+            <p className="text-sm font-semibold text-emerald-900">
+              Sorteado foi o número {raffle.drawnNumber}.
+            </p>
+            {raffle.winnerName ? (
+              <p className="mt-1 text-sm text-emerald-900">
+                Ganhador: {raffle.winnerName}
+              </p>
+            ) : null}
+            {raffle.drawnNumber != null ? (
+              <p className="mt-0.5 text-sm text-emerald-800">
+                Número sorteado: {raffle.drawnNumber}
+              </p>
+            ) : null}
+          </div>
         ) : null}
       </div>
 

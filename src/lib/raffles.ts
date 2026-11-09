@@ -17,6 +17,7 @@ export type PublicRaffle = {
   photoUrls: string[];
   status: RaffleStatus;
   drawnNumber: number | null;
+  winnerName: string | null;
   publicToken: string;
   drawAt: string | null;
 };
@@ -60,6 +61,10 @@ export function mapPublicRaffle(raw: Record<string, unknown>): PublicRaffle {
       : [],
     status: raw.status as RaffleStatus,
     drawnNumber: raw.drawn_number == null ? null : Number(raw.drawn_number),
+    winnerName: (() => {
+      const name = String(raw.winner_name ?? "").trim();
+      return name || null;
+    })(),
     publicToken: String(raw.public_token ?? ""),
     drawAt: raw.draw_at == null ? null : String(raw.draw_at),
   };
