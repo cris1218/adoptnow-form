@@ -92,3 +92,9 @@ export function mapBuyerOrders(raw: unknown): BuyerOrder[] {
     };
   });
 }
+
+/** Usado só na V2 (Mercado Pago). Mantido para o módulo não quebrar o build. */
+export function technicalPayerEmail(phone: string): string {
+  const digits = phone.replace(/\D/g, "");
+  return `rifa+${digits}@recantoronron.invalid`;
+}
