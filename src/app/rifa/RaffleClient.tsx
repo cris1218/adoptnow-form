@@ -189,7 +189,7 @@ export function RaffleClient({
         <p className="mt-1 text-sm text-stone-500">
           Verde = pago · Amarelo = reservado · Branco = livre
         </p>
-        <div className="mt-4 flex flex-wrap gap-2">
+        <div className="mt-4 grid w-full grid-cols-5 gap-1.5 sm:grid-cols-8 sm:gap-2 md:grid-cols-10">
           {numbers.map((item) => {
             const selectedNow = selectedSet.has(item.number);
             const disabled = !canBuy || item.status !== "available";
@@ -199,7 +199,7 @@ export function RaffleClient({
                 type="button"
                 disabled={disabled && !selectedNow}
                 onClick={() => toggleNumber(item)}
-                className={`flex h-11 w-11 items-center justify-center rounded-lg border text-sm font-semibold disabled:opacity-70 ${cellClass(item.status, selectedNow)}`}
+                className={`flex aspect-square w-full items-center justify-center rounded-lg border text-xs font-semibold sm:text-sm disabled:opacity-70 ${cellClass(item.status, selectedNow)}`}
               >
                 {item.number}
               </button>
