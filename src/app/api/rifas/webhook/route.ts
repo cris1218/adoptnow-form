@@ -72,13 +72,20 @@ async function notifyAfterPaid(orderId: string) {
     console.error("notifyStaffRafflePaid", err);
   }
 
-  if (buyerPhone && isEvolutionConfigured()) {
+  if (!buyerPhone) {
+    console.warn("notifyAfterPaid whatsapp skipped: sem telefone");
+  } else if (!isEvolutionConfigured()) {
+    console.warn(
+      "notifyAfterPaid whatsapp skipped: EVOLUTION_API_URL/KEY ausentes"
+    );
+  } else {
     try {
       await sendWhatsAppText({
         phone: buyerPhone,
         text: approvedMessage(title, numbers),
       });
       whatsapp = true;
+      console.log("notifyAfterPaid whatsapp", { orderId, phone: buyerPhone });
     } catch (err) {
       console.error("whatsapp raffle paid", err);
     }
