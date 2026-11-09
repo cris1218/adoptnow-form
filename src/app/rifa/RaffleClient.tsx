@@ -162,6 +162,7 @@ export function RaffleClient({
   const [message, setMessage] = useState<string | null>(null);
   const [pixCopied, setPixCopied] = useState(false);
   const [proofSentSuccess, setProofSentSuccess] = useState(false);
+  const [proofUploading, setProofUploading] = useState(false);
   const [pending, startTransition] = useTransition();
   const proofInputRef = useRef<HTMLInputElement>(null);
   const pixSectionRef = useRef<HTMLDivElement>(null);
@@ -288,6 +289,7 @@ export function RaffleClient({
   function handleProofSelected(file: File | null) {
     if (!file || !activeOrder) return;
     setMessage(null);
+    setProofUploading(true);
     const orderId = activeOrder.id;
     const phoneForProof =
       activeOrder.buyerPhone || buyerPhone || lookupPhone;
@@ -303,12 +305,14 @@ export function RaffleClient({
         if (!result.ok) {
           const failMessage =
             result.message || "Falha ao enviar comprovante.";
+          setProofUploading(false);
           setMessage(failMessage);
           window.alert(failMessage);
           return;
         }
         setActiveOrder(null);
         setSelected([]);
+        setProofUploading(false);
         setProofSentSuccess(true);
         setMessage(null);
         window.setTimeout(() => {
@@ -323,6 +327,7 @@ export function RaffleClient({
           error instanceof Error
             ? error.message
             : "Falha ao enviar comprovante.";
+        setProofUploading(false);
         setMessage(failMessage);
         window.alert(failMessage);
       } finally {
@@ -334,10 +339,11 @@ export function RaffleClient({
   }
 
   const showPix =
-    activeOrder &&
-    (activeOrder.status === "awaiting_payment" ||
-      activeOrder.status === "pending_review") &&
-    activeOrder.pixCopyPaste;
+    Boolean(activeOrder) &&
+    activeOrder?.status === "awaiting_payment" &&
+    Boolean(activeOrder.pixCopyPaste) &&
+    !proofUploading &&
+    !proofSentSuccess;
 
   if (proofSentSuccess) {
     return (
