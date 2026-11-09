@@ -216,7 +216,7 @@ export async function submitRafflePaymentProof(input: {
     const { data: orderRow, error: orderError } = await admin
       .from("raffle_orders")
       .select(
-        "id, raffle_id, buyer_name, buyer_phone, numbers, total_cents, status, expires_at, paid_at, created_at, pix_copy_paste, pix_qr_base64, raffles!inner(id, title, public_token)"
+        "id, raffle_id, buyer_name, buyer_phone, numbers, total_cents, status, expires_at, paid_at, created_at, pix_copy_paste, pix_qr_base64"
       )
       .eq("id", input.orderId)
       .maybeSingle();
@@ -232,11 +232,19 @@ export async function submitRafflePaymentProof(input: {
       return { ok: false, message: "Pedido não encontrado." };
     }
 
-    const raffleJoin = orderRow.raffles as
-      | { id?: string; title?: string; public_token?: string }
-      | { id?: string; title?: string; public_token?: string }[]
-      | null;
-    const raffle = Array.isArray(raffleJoin) ? raffleJoin[0] : raffleJoin;
+    const { data: raffle, error: raffleError } = await admin
+      .from("raffles")
+      .select("id, title, public_token")
+      .eq("id", orderRow.raffle_id)
+      .maybeSingle();
+
+    if (raffleError) {
+      console.error("submitRafflePaymentProof raffle", raffleError);
+      return {
+        ok: false,
+        message: raffleError.message || "Não foi possível localizar a rifa.",
+      };
+    }
     if (!raffle?.public_token || raffle.public_token !== token) {
       return { ok: false, message: "Pedido não pertence a esta rifa." };
     }
