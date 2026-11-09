@@ -9,7 +9,12 @@ import {
   type PublicRaffle,
   type PublicRaffleNumber,
 } from "@/lib/raffles";
-import { isValidPhone, normalizePhone } from "@/lib/masks";
+import {
+  fullNameError,
+  normalizeFullName,
+  normalizePhone,
+  phoneError,
+} from "@/lib/masks";
 import { notifyStaffRafflePaymentProof } from "@/lib/notifyStaff";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { getSupabaseServer } from "@/lib/supabase";
@@ -59,10 +64,16 @@ export async function lookupRaffleOrdersByPhone(
   token: string,
   phone: string
 ): Promise<{ ok: boolean; orders: BuyerOrder[]; message?: string }> {
+  const normalized = normalizePhone(phone);
+  const invalidPhone = phoneError(normalized);
+  if (invalidPhone) {
+    return { ok: false, orders: [], message: invalidPhone };
+  }
+
   const supabase = getSupabaseServer();
   const { data, error } = await supabase.rpc("get_raffle_orders_by_phone", {
     p_token: token.trim(),
-    p_phone: normalizePhone(phone),
+    p_phone: normalized,
   });
   if (error) {
     console.error("get_raffle_orders_by_phone", error);
@@ -86,12 +97,14 @@ export async function purchaseRaffleNumbers(input: {
   order?: BuyerOrder;
 }> {
   const phone = normalizePhone(input.buyerPhone);
-  const name = input.buyerName.trim();
-  if (name.length < 2) {
-    return { ok: false, message: "Informe o nome." };
+  const name = normalizeFullName(input.buyerName);
+  const nameError = fullNameError(name);
+  if (nameError) {
+    return { ok: false, message: nameError };
   }
-  if (!isValidPhone(phone)) {
-    return { ok: false, message: "Informe um WhatsApp válido com DDD." };
+  const buyerPhoneError = phoneError(phone);
+  if (buyerPhoneError) {
+    return { ok: false, message: buyerPhoneError };
   }
   if (!input.numbers.length) {
     return { ok: false, message: "Selecione ao menos um número." };
@@ -189,8 +202,9 @@ export async function submitRafflePaymentProof(input: {
 }): Promise<{ ok: boolean; message?: string; order?: BuyerOrder }> {
   const phone = normalizePhone(input.buyerPhone);
   const url = input.paymentProofUrl.trim();
-  if (!isValidPhone(phone)) {
-    return { ok: false, message: "Informe um WhatsApp válido com DDD." };
+  const invalidPhone = phoneError(phone);
+  if (invalidPhone) {
+    return { ok: false, message: invalidPhone };
   }
   if (!url) {
     return { ok: false, message: "Anexe o comprovante." };

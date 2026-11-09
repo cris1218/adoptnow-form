@@ -43,6 +43,7 @@ import {
   maskPhone,
   normalizePhone,
   onlyDigits,
+  phoneError,
 } from "@/lib/masks";
 import {
   INTERESTED_CAT_OTHER,
@@ -89,11 +90,7 @@ export function AdoptionLeadForm({
   const fullNameRef = useValidityMessage<HTMLInputElement>(nameError);
   const [phone, setPhone] = useState("");
   const phoneRef = useValidityMessage<HTMLInputElement>(
-    !phone
-      ? "Informe seu WhatsApp."
-      : isValidPhone(phone)
-        ? ""
-        : "Informe um WhatsApp válido com DDD."
+    !phone ? "Informe seu WhatsApp." : phoneError(phone)
   );
   const [cpfError, setCpfError] = useState<string | null>(null);
   const [checkingCpf, setCheckingCpf] = useState(false);

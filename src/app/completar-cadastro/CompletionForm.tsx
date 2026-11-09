@@ -18,7 +18,7 @@ import {
 } from "@/components/FormFields";
 import { IdentityAddressFields } from "@/components/IdentityAddressFields";
 import { PawMark } from "@/components/PawMark";
-import { fullNameError, isValidPhone, maskPhone } from "@/lib/masks";
+import { fullNameError, maskPhone, phoneError } from "@/lib/masks";
 
 const initialState: CompletionFormState = null;
 
@@ -54,9 +54,7 @@ export function CompletionForm({
     fullName: preview ? fullNameError(fullName) : "",
     phone: preview
       ? phone
-        ? isValidPhone(phone)
-          ? ""
-          : "Informe um telefone válido com DDD."
+        ? phoneError(phone)
         : "Informe seu telefone."
       : "",
   };

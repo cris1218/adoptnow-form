@@ -15,7 +15,16 @@ import {
   type PublicRaffleNumber,
   type RaffleNumberStatus,
 } from "@/lib/raffles";
-import { isValidPhone, maskPhone } from "@/lib/masks";
+import {
+  FieldError,
+  fieldBorderClass,
+} from "@/components/FormFields";
+import {
+  fullNameError,
+  isValidPhone,
+  maskPhone,
+  phoneError,
+} from "@/lib/masks";
 
 function cellClass(status: RaffleNumberStatus, selected: boolean) {
   if (selected) return "border-brand-dark bg-brand-dark text-white";
@@ -100,7 +109,10 @@ export function RaffleClient({
   const [selected, setSelected] = useState<number[]>([]);
   const [buyerName, setBuyerName] = useState("");
   const [buyerPhone, setBuyerPhone] = useState("");
+  const [buyerNameTouched, setBuyerNameTouched] = useState(false);
+  const [buyerPhoneTouched, setBuyerPhoneTouched] = useState(false);
   const [lookupPhone, setLookupPhone] = useState("");
+  const [lookupPhoneTouched, setLookupPhoneTouched] = useState(false);
   const [orders, setOrders] = useState<BuyerOrder[]>([]);
   const [ordersModalOpen, setOrdersModalOpen] = useState(false);
   const [activeOrder, setActiveOrder] = useState<BuyerOrder | null>(null);
@@ -112,6 +124,9 @@ export function RaffleClient({
   const totalCents = selected.length * raffle.priceCents;
   const drawAtLabel = formatDrawAt(raffle.drawAt);
   const selectedSet = useMemo(() => new Set(selected), [selected]);
+  const buyerNameError = fullNameError(buyerName);
+  const buyerPhoneError = phoneError(buyerPhone);
+  const lookupPhoneError = phoneError(lookupPhone);
 
   function toggleNumber(n: PublicRaffleNumber) {
     if (!canBuy || n.status !== "available") return;
@@ -123,8 +138,13 @@ export function RaffleClient({
   }
 
   function handleLookup() {
+    setLookupPhoneTouched(true);
     setMessage(null);
     setOrdersModalOpen(false);
+    if (lookupPhoneError) {
+      setMessage(lookupPhoneError);
+      return;
+    }
     startTransition(async () => {
       const result = await lookupRaffleOrdersByPhone(token, lookupPhone);
       if (!result.ok) {
@@ -151,7 +171,13 @@ export function RaffleClient({
   }
 
   function handlePurchase() {
+    setBuyerNameTouched(true);
+    setBuyerPhoneTouched(true);
     setMessage(null);
+    if (buyerNameError || buyerPhoneError) {
+      setMessage(buyerNameError || buyerPhoneError);
+      return;
+    }
     startTransition(async () => {
       const result = await purchaseRaffleNumbers({
         token,
@@ -244,8 +270,8 @@ export function RaffleClient({
           {raffle.title}
         </h1>
         {raffle.itemsDescription ? (
-          <p className="mt-2 text-base leading-relaxed text-stone-600">
-            {raffle.itemsDescription}
+          <p className="mt-2 whitespace-pre-wrap text-base leading-relaxed text-stone-600">
+            {raffle.itemsDescription.trimEnd()}
           </p>
         ) : null}
         <p className="mt-3 text-sm font-semibold text-brand-dark">
@@ -275,13 +301,21 @@ export function RaffleClient({
         <label className="mt-3 block text-sm font-medium text-stone-700">
           WhatsApp
           <input
-            className="mt-1 w-full rounded-xl border border-stone-300 px-3 py-3"
+            className={`mt-1 w-full rounded-xl border px-3 py-3 ${fieldBorderClass(
+              lookupPhoneTouched && Boolean(lookupPhoneError)
+            )}`}
             value={lookupPhone}
             onChange={(event) => setLookupPhone(maskPhone(event.target.value))}
+            onBlur={() => setLookupPhoneTouched(true)}
             inputMode="numeric"
+            autoComplete="tel-national"
             placeholder="(42) 99999-9999"
           />
         </label>
+        <FieldError
+          id="lookup-phone-error"
+          message={lookupPhoneTouched ? lookupPhoneError : ""}
+        />
         <button
           type="button"
           disabled={pending || !isValidPhone(lookupPhone)}
@@ -377,29 +411,46 @@ export function RaffleClient({
           <label className="mt-3 block text-sm font-medium text-stone-700">
             Nome completo
             <input
-              className="mt-1 w-full rounded-xl border border-stone-300 px-3 py-3"
+              className={`mt-1 w-full rounded-xl border px-3 py-3 ${fieldBorderClass(
+                buyerNameTouched && Boolean(buyerNameError)
+              )}`}
               value={buyerName}
               onChange={(event) => setBuyerName(event.target.value)}
-              placeholder="Seu nome"
+              onBlur={() => setBuyerNameTouched(true)}
+              autoComplete="name"
+              autoCapitalize="words"
+              placeholder="Nome e sobrenome"
             />
           </label>
+          <FieldError
+            id="buyer-name-error"
+            message={buyerNameTouched ? buyerNameError : ""}
+          />
           <label className="mt-3 block text-sm font-medium text-stone-700">
             WhatsApp
             <input
-              className="mt-1 w-full rounded-xl border border-stone-300 px-3 py-3"
+              className={`mt-1 w-full rounded-xl border px-3 py-3 ${fieldBorderClass(
+                buyerPhoneTouched && Boolean(buyerPhoneError)
+              )}`}
               value={buyerPhone}
               onChange={(event) => setBuyerPhone(maskPhone(event.target.value))}
+              onBlur={() => setBuyerPhoneTouched(true)}
               inputMode="numeric"
+              autoComplete="tel-national"
               placeholder="(42) 99999-9999"
             />
           </label>
+          <FieldError
+            id="buyer-phone-error"
+            message={buyerPhoneTouched ? buyerPhoneError : ""}
+          />
           <button
             type="button"
             disabled={
               pending ||
               selected.length === 0 ||
-              buyerName.trim().length < 2 ||
-              !isValidPhone(buyerPhone)
+              Boolean(buyerNameError) ||
+              Boolean(buyerPhoneError)
             }
             onClick={handlePurchase}
             className="mt-4 flex h-14 w-full items-center justify-center rounded-2xl bg-brand-dark text-lg font-semibold text-white disabled:opacity-50"

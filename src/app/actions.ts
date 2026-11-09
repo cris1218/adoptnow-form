@@ -19,7 +19,7 @@ import {
 } from "@/lib/identityAddress";
 import { getSupabaseServer } from "@/lib/supabase";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
-import { isValidCpf, isValidPhone, normalizePhone, onlyDigits } from "@/lib/masks";
+import { isValidCpf, normalizePhone, onlyDigits, phoneError } from "@/lib/masks";
 import {
   notifyStaffExclusiveCatInterest,
   notifyStaffKnownPersonAutoApproved,
@@ -206,8 +206,9 @@ export async function savePotentialAdopter(
 
   const phone = normalizePhone(String(formData.get("phone") ?? ""));
 
-  if (!isValidPhone(phone)) {
-    return { ok: false, message: "Informe um telefone válido com DDD." };
+  const invalidPhone = phoneError(phone);
+  if (invalidPhone) {
+    return { ok: false, message: invalidPhone };
   }
 
   const cpf = onlyDigits(String(formData.get("document") ?? ""));

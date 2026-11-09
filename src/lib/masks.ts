@@ -37,8 +37,24 @@ export function maskPhone(value: string): string {
 }
 
 export function isValidPhone(value: string): boolean {
+  return phoneError(value) === "";
+}
+
+/** Celular BR com DDD (11 dígitos, 9 após o DDD). */
+export function phoneError(value: string): string {
   const digits = normalizePhone(value);
-  return digits.length === 10 || digits.length === 11;
+  if (!digits) return "Informe um WhatsApp válido com DDD.";
+  if (digits.length < 11) {
+    return "Informe o celular completo com DDD (ex.: (42) 99999-9999).";
+  }
+  if (digits.length !== 11 || digits[2] !== "9") {
+    return "Informe um celular válido (9 dígitos após o DDD).";
+  }
+  const local = digits.slice(2);
+  if (/^(\d)\1{10}$/.test(digits) || /^(\d)\1{8}$/.test(local)) {
+    return "Informe um WhatsApp válido.";
+  }
+  return "";
 }
 
 export function normalizeFullName(value: string): string {
@@ -46,6 +62,31 @@ export function normalizeFullName(value: string): string {
 }
 
 const NAME_CONNECTORS = new Set(["da", "das", "de", "do", "dos", "e"]);
+
+const FULL_NAME_PLACEHOLDERS = new Set([
+  "teste",
+  "test",
+  "asdf",
+  "fulano",
+  "ciclano",
+  "beltrano",
+  "nome",
+  "sobrenome",
+  "usuario",
+  "user",
+  "admin",
+  "xxx",
+  "abc",
+  "qwerty",
+]);
+
+function plainNameToken(word: string): string {
+  return word
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z]/g, "");
+}
 
 export function fullNameError(value: string): string {
   const name = normalizeFullName(value);
@@ -69,6 +110,15 @@ export function fullNameError(value: string): string {
   }
   if (words.some((word) => letterCount(word) < 1)) {
     return "Use apenas letras no nome, sem números ou símbolos.";
+  }
+
+  const plainWords = words.map(plainNameToken).filter(Boolean);
+  if (
+    plainWords.some(
+      (word) => FULL_NAME_PLACEHOLDERS.has(word) || /^(.)\1+$/.test(word)
+    )
+  ) {
+    return "Informe seu nome completo de verdade.";
   }
   return "";
 }
