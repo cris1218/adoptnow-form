@@ -162,6 +162,7 @@ export function RaffleClient({
   const [message, setMessage] = useState<string | null>(null);
   const [pixCopied, setPixCopied] = useState(false);
   const [proofSentSuccess, setProofSentSuccess] = useState(false);
+  const [proofFile, setProofFile] = useState<File | null>(null);
   const [proofUploading, setProofUploading] = useState(false);
   const [pending, startTransition] = useTransition();
   const proofInputRef = useRef<HTMLInputElement>(null);
@@ -178,6 +179,8 @@ export function RaffleClient({
   useEffect(() => {
     if (!activeOrder) return;
     setPixCopied(false);
+    setProofFile(null);
+    setProofUploading(false);
     const frame = window.requestAnimationFrame(() => {
       pixSectionRef.current?.scrollIntoView({
         behavior: "smooth",
@@ -286,13 +289,20 @@ export function RaffleClient({
     });
   }
 
-  function handleProofSelected(file: File | null) {
-    if (!file || !activeOrder) return;
+  function handleProofFilePicked(file: File | null) {
+    if (!file) return;
+    setMessage(null);
+    setProofFile(file);
+  }
+
+  function handleSendProof() {
+    if (!proofFile || !activeOrder) return;
     setMessage(null);
     setProofUploading(true);
     const orderId = activeOrder.id;
     const phoneForProof =
       activeOrder.buyerPhone || buyerPhone || lookupPhone;
+    const file = proofFile;
     startTransition(async () => {
       try {
         const url = await uploadProof(file);
@@ -312,6 +322,7 @@ export function RaffleClient({
         }
         setActiveOrder(null);
         setSelected([]);
+        setProofFile(null);
         setProofUploading(false);
         setProofSentSuccess(true);
         setMessage(null);
@@ -342,6 +353,7 @@ export function RaffleClient({
     Boolean(activeOrder) &&
     activeOrder?.status === "awaiting_payment" &&
     Boolean(activeOrder.pixCopyPaste) &&
+    !proofFile &&
     !proofUploading &&
     !proofSentSuccess;
 
@@ -426,7 +438,7 @@ export function RaffleClient({
           type="button"
           disabled={pending || lookupPhone.trim().length === 0}
           onClick={handleLookup}
-          className="mt-3 flex h-12 w-full cursor-pointer items-center justify-center rounded-2xl bg-stone-200 text-base font-semibold text-stone-900 disabled:cursor-not-allowed disabled:opacity-50"
+          className="mt-3 flex h-12 w-full cursor-pointer items-center justify-center rounded-2xl bg-stone-200 text-base font-semibold text-stone-900 shadow-sm transition hover:bg-stone-300 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-50"
         >
           Buscar meus números
         </button>
@@ -456,7 +468,7 @@ export function RaffleClient({
                 <li key={order.id}>
                   <button
                     type="button"
-                    className="w-full rounded-2xl border border-stone-200 bg-stone-50 px-4 py-3 text-left"
+                    className="w-full cursor-pointer rounded-2xl border border-stone-200 bg-stone-50 px-4 py-3 text-left transition hover:border-brand-200 hover:bg-brand-50 active:scale-[0.99]"
                     onClick={() => openOrderFromModal(order)}
                   >
                     <p className="text-sm font-semibold text-stone-900">
@@ -474,7 +486,7 @@ export function RaffleClient({
             </ul>
             <button
               type="button"
-              className="mt-4 flex h-12 w-full items-center justify-center rounded-2xl bg-stone-200 text-base font-semibold text-stone-900"
+              className="mt-4 flex h-12 w-full cursor-pointer items-center justify-center rounded-2xl bg-stone-200 text-base font-semibold text-stone-900 shadow-sm transition hover:bg-stone-300 active:scale-[0.99]"
               onClick={() => setOrdersModalOpen(false)}
             >
               Fechar
@@ -498,7 +510,7 @@ export function RaffleClient({
                 type="button"
                 disabled={disabled && !selectedNow}
                 onClick={() => toggleNumber(item)}
-                className={`flex aspect-square w-full items-center justify-center rounded-lg border text-xs font-semibold sm:text-sm disabled:opacity-70 ${cellClass(item.status, selectedNow)}`}
+                className={`flex aspect-square w-full cursor-pointer items-center justify-center rounded-lg border text-xs font-semibold transition hover:border-brand-dark hover:shadow-sm active:scale-[0.97] disabled:cursor-default disabled:opacity-70 sm:text-sm ${cellClass(item.status, selectedNow)}`}
               >
                 {item.number}
               </button>
@@ -559,7 +571,7 @@ export function RaffleClient({
               Boolean(buyerPhoneError)
             }
             onClick={handlePurchase}
-            className="mt-4 flex h-14 w-full items-center justify-center rounded-2xl bg-brand-dark text-lg font-semibold text-white disabled:opacity-50"
+            className="mt-4 flex h-14 w-full cursor-pointer items-center justify-center rounded-2xl bg-brand-dark text-lg font-semibold text-white shadow-sm transition hover:bg-brand-950 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-50"
           >
             {pending ? "Gerando Pix..." : "Gerar Pix"}
           </button>
@@ -616,7 +628,7 @@ export function RaffleClient({
                 />
                 <button
                   type="button"
-                  className="mt-2 flex h-12 w-full items-center justify-center rounded-2xl bg-brand-dark text-base font-semibold text-white"
+                  className="mt-2 flex h-12 w-full cursor-pointer items-center justify-center rounded-2xl bg-brand-dark text-base font-semibold text-white shadow-sm transition hover:bg-brand-950 active:scale-[0.99]"
                   onClick={() => void handleCopyPix()}
                 >
                   {pixCopied ? "Pix copiado!" : "Copiar Pix"}
@@ -633,16 +645,50 @@ export function RaffleClient({
                 accept="image/*,application/pdf,.heic,.heif"
                 className="hidden"
                 onChange={(event) =>
-                  handleProofSelected(event.target.files?.[0] ?? null)
+                  handleProofFilePicked(event.target.files?.[0] ?? null)
                 }
               />
+              {proofFile ? (
+                <div className="mb-3 rounded-xl border border-brand-200 bg-brand-50 px-3 py-3">
+                  <p className="text-xs font-medium uppercase tracking-wide text-stone-500">
+                    Arquivo anexado
+                  </p>
+                  <p className="mt-1 break-all text-sm font-semibold text-stone-900">
+                    {proofFile.name}
+                  </p>
+                  <button
+                    type="button"
+                    disabled={pending || proofUploading}
+                    onClick={() => {
+                      setProofFile(null);
+                      setMessage(null);
+                      if (proofInputRef.current) {
+                        proofInputRef.current.value = "";
+                      }
+                    }}
+                    className="mt-2 text-sm font-medium text-brand-dark transition hover:text-brand-950 disabled:opacity-50"
+                  >
+                    Trocar arquivo
+                  </button>
+                </div>
+              ) : null}
               <button
                 type="button"
-                disabled={pending}
-                onClick={() => proofInputRef.current?.click()}
-                className="flex h-14 w-full cursor-pointer items-center justify-center rounded-2xl bg-brand-dark text-lg font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50"
+                disabled={pending || proofUploading}
+                onClick={() => {
+                  if (proofFile) {
+                    handleSendProof();
+                    return;
+                  }
+                  proofInputRef.current?.click();
+                }}
+                className="flex h-14 w-full cursor-pointer items-center justify-center rounded-2xl bg-brand-dark text-lg font-semibold text-white shadow-sm transition hover:bg-brand-950 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-50"
               >
-                {pending ? "Enviando..." : "Anexar comprovante"}
+                {pending || proofUploading
+                  ? "Enviando..."
+                  : proofFile
+                    ? "Enviar"
+                    : "Anexar comprovante"}
               </button>
               {message ? (
                 <p className="mt-3 rounded-xl bg-rose-50 px-3 py-2 text-sm font-medium text-rose-700">
