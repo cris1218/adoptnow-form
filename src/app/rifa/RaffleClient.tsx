@@ -141,6 +141,7 @@ function WinnersPodium({ winners }: { winners: PublicRaffleWinner[] }) {
   } as const;
 
   if (single) {
+    const singleName = single.buyerName || "Ganhador(a)";
     return (
       <div className="rounded-[1.75rem] border border-emerald-200 bg-emerald-50 p-5 shadow-[0_18px_50px_rgba(14,90,88,0.12)]">
         <div className="text-center">
@@ -152,11 +153,17 @@ function WinnersPodium({ winners }: { winners: PublicRaffleWinner[] }) {
             Parabéns ao contemplado
           </p>
         </div>
-        <div className="mt-4 rounded-2xl border border-emerald-200/80 bg-white px-4 py-4 text-center">
-          <p className="text-base font-bold leading-snug text-stone-900 sm:text-lg">
-            🎉 {single.buyerName || "Ganhador(a)"}
+        <div className="mt-4 overflow-hidden rounded-2xl border border-emerald-200/80 bg-white px-4 py-4 text-center">
+          <p className="text-2xl leading-none" aria-hidden="true">
+            🎉
           </p>
-          <p className="mt-1 text-sm font-semibold tabular-nums text-stone-600">
+          <p
+            className="mt-2 w-full break-words text-base font-bold leading-snug text-stone-900 [overflow-wrap:anywhere] sm:text-lg"
+            title={singleName}
+          >
+            {singleName}
+          </p>
+          <p className="mt-2 text-sm font-semibold tabular-nums text-stone-600">
             🎯 Nº {single.drawnNumber}
           </p>
         </div>
@@ -179,13 +186,14 @@ function WinnersPodium({ winners }: { winners: PublicRaffleWinner[] }) {
       <div className="mt-5 flex items-end justify-center gap-2 sm:gap-3">
         {podium.map(({ winner, place, height }) => {
           const meta = placeMeta[place];
+          const name = winner.buyerName || "Ganhador(a)";
           return (
             <div
               key={`${winner.drawIndex}-${winner.drawnNumber}`}
               className="flex min-w-0 flex-1 flex-col items-center"
             >
               <div
-                className={`flex w-full flex-col items-center gap-1.5 rounded-2xl border px-2.5 py-3 text-center sm:px-3 ${meta.card}`}
+                className={`flex w-full min-w-0 flex-col items-center gap-1.5 overflow-hidden rounded-2xl border px-2 py-3 text-center sm:px-2.5 ${meta.card}`}
               >
                 <span className="text-3xl leading-none" aria-hidden="true">
                   {meta.emoji}
@@ -193,8 +201,14 @@ function WinnersPodium({ winners }: { winners: PublicRaffleWinner[] }) {
                 <p className="text-[11px] font-semibold uppercase tracking-wide text-stone-500">
                   {meta.label}
                 </p>
-                <p className="line-clamp-2 text-base font-bold leading-snug text-stone-900 sm:text-lg">
-                  🎉 {winner.buyerName || "Ganhador(a)"}
+                <p className="text-lg leading-none" aria-hidden="true">
+                  🎉
+                </p>
+                <p
+                  className="line-clamp-3 w-full min-w-0 break-words text-sm font-bold leading-snug text-stone-900 [overflow-wrap:anywhere] sm:text-base"
+                  title={name}
+                >
+                  {name}
                 </p>
                 <p className="text-sm font-semibold tabular-nums text-stone-600">
                   🎯 Nº {winner.drawnNumber}
@@ -217,19 +231,25 @@ function WinnersPodium({ winners }: { winners: PublicRaffleWinner[] }) {
 
       {extras.length > 0 ? (
         <ul className="mt-4 space-y-2 border-t border-emerald-200/80 pt-4">
-          {extras.map((winner) => (
-            <li
-              key={`${winner.drawIndex}-${winner.drawnNumber}`}
-              className="flex items-center justify-between gap-3 rounded-xl border border-emerald-200/80 bg-white/90 px-3 py-2.5"
-            >
-              <span className="min-w-0 text-sm font-semibold text-emerald-900">
-                🏅 {winner.drawIndex}º · {winner.buyerName || "Ganhador(a)"}
-              </span>
-              <span className="shrink-0 text-sm font-bold text-emerald-950">
-                🎯 Nº {winner.drawnNumber}
-              </span>
-            </li>
-          ))}
+          {extras.map((winner) => {
+            const name = winner.buyerName || "Ganhador(a)";
+            return (
+              <li
+                key={`${winner.drawIndex}-${winner.drawnNumber}`}
+                className="flex items-start justify-between gap-3 rounded-xl border border-emerald-200/80 bg-white/90 px-3 py-2.5"
+              >
+                <span
+                  className="min-w-0 flex-1 break-words text-sm font-semibold leading-snug text-emerald-900 [overflow-wrap:anywhere]"
+                  title={name}
+                >
+                  🏅 {winner.drawIndex}º · {name}
+                </span>
+                <span className="shrink-0 pt-0.5 text-sm font-bold text-emerald-950">
+                  🎯 Nº {winner.drawnNumber}
+                </span>
+              </li>
+            );
+          })}
         </ul>
       ) : null}
     </div>
