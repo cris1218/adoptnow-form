@@ -26,6 +26,12 @@ export type PublicRaffleNumber = {
   status: RaffleNumberStatus;
 };
 
+export type PublicRaffleWinner = {
+  drawIndex: number;
+  drawnNumber: number;
+  buyerName: string;
+};
+
 export type BuyerOrder = {
   id: string;
   status: RaffleOrderStatus;
@@ -80,6 +86,21 @@ export function mapPublicNumbers(raw: unknown): PublicRaffleNumber[] {
       status: row.status as RaffleNumberStatus,
     };
   });
+}
+
+export function mapPublicWinners(raw: unknown): PublicRaffleWinner[] {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .map((item) => {
+      const row = item as Record<string, unknown>;
+      return {
+        drawIndex: Number(row.draw_index ?? 0),
+        drawnNumber: Number(row.drawn_number ?? 0),
+        buyerName: String(row.buyer_name ?? "").trim(),
+      };
+    })
+    .filter((item) => item.drawIndex > 0 && item.drawnNumber > 0)
+    .sort((a, b) => a.drawIndex - b.drawIndex);
 }
 
 export function mapBuyerOrders(raw: unknown): BuyerOrder[] {

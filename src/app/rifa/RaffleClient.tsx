@@ -14,6 +14,7 @@ import {
   type BuyerOrder,
   type PublicRaffle,
   type PublicRaffleNumber,
+  type PublicRaffleWinner,
   type RaffleNumberStatus,
 } from "@/lib/raffles";
 import {
@@ -173,13 +174,16 @@ export function RaffleClient({
   token,
   initialRaffle,
   initialNumbers,
+  initialWinners = [],
 }: {
   token: string;
   initialRaffle: PublicRaffle;
   initialNumbers: PublicRaffleNumber[];
+  initialWinners?: PublicRaffleWinner[];
 }) {
   const [raffle] = useState(initialRaffle);
   const [numbers, setNumbers] = useState(initialNumbers);
+  const [winners] = useState(initialWinners);
   const [selected, setSelected] = useState<number[]>([]);
   const [buyerName, setBuyerName] = useState("");
   const [buyerPhone, setBuyerPhone] = useState("");
@@ -462,10 +466,51 @@ export function RaffleClient({
     activeOrder?.status === "awaiting_payment" &&
     Boolean(activeOrder.pixCopyPaste || activeOrder.pixTicketUrl);
 
+  const displayWinners =
+    winners.length > 0
+      ? winners
+      : raffle.status === "drawn" && raffle.drawnNumber != null
+        ? [
+            {
+              drawIndex: 1,
+              drawnNumber: raffle.drawnNumber,
+              buyerName: raffle.winnerName ?? "",
+            },
+          ]
+        : [];
+
   return (
     <div className="flex flex-col gap-5">
       {raffle.photoUrls.length > 0 ? (
         <RafflePhotoCarousel urls={raffle.photoUrls} />
+      ) : null}
+
+      {raffle.status === "drawn" && displayWinners.length > 0 ? (
+        <div className="rounded-[1.75rem] border border-emerald-200 bg-emerald-50 p-5 shadow-[0_18px_50px_rgba(14,90,88,0.12)]">
+          <h2 className="text-lg font-bold text-emerald-950">
+            {displayWinners.length > 1 ? "Ganhadores" : "Ganhador"}
+          </h2>
+          <ul className="mt-3 space-y-3">
+            {displayWinners.map((winner) => (
+              <li
+                key={`${winner.drawIndex}-${winner.drawnNumber}`}
+                className="rounded-2xl border border-emerald-200/80 bg-white/90 px-4 py-3"
+              >
+                <p className="text-xs font-semibold uppercase tracking-wide text-emerald-800">
+                  {displayWinners.length > 1
+                    ? `${winner.drawIndex}º prêmio`
+                    : "Sorteio"}
+                </p>
+                <p className="mt-1 text-xl font-bold text-emerald-950">
+                  Número {winner.drawnNumber}
+                </p>
+                <p className="mt-0.5 text-base font-semibold text-emerald-900">
+                  {winner.buyerName || "Ganhador(a)"}
+                </p>
+              </li>
+            ))}
+          </ul>
+        </div>
       ) : null}
 
       <div className="rounded-[1.75rem] border border-white/70 bg-white/90 p-5 shadow-[0_18px_50px_rgba(14,90,88,0.12)]">
@@ -477,30 +522,16 @@ export function RaffleClient({
             {raffle.itemsDescription.trimEnd()}
           </p>
         ) : null}
-        <p className="mt-3 text-sm font-semibold text-brand-dark">
-          {formatCentsBrl(raffle.priceCents)} por número
-          {raffle.status === "drawn"
-            ? ` · Sorteada${raffle.drawnNumber != null ? ` (#${raffle.drawnNumber})` : ""}`
-            : raffle.status === "closed"
-              ? " · Encerrada"
-              : ""}
-        </p>
+        {raffle.status !== "drawn" ? (
+          <p className="mt-3 text-sm font-semibold text-brand-dark">
+            {formatCentsBrl(raffle.priceCents)} por número
+            {raffle.status === "closed" ? " · Encerrada" : ""}
+          </p>
+        ) : null}
         {raffle.status === "closed" && drawAtLabel ? (
           <p className="mt-2 text-sm text-amber-900">
             Vendas encerradas. Sorteio em {drawAtLabel}.
           </p>
-        ) : null}
-        {raffle.status === "drawn" ? (
-          <div className="mt-3 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3">
-            <p className="text-sm font-semibold text-emerald-900">
-              Sorteado foi o número {raffle.drawnNumber}.
-            </p>
-            {raffle.winnerName ? (
-              <p className="mt-1 text-sm text-emerald-900">
-                Ganhador: {raffle.winnerName}
-              </p>
-            ) : null}
-          </div>
         ) : null}
       </div>
 
@@ -536,7 +567,7 @@ export function RaffleClient({
           type="button"
           disabled={pending || lookupPhone.trim().length === 0}
           onClick={handleLookup}
-          className="mt-3 flex h-12 w-full cursor-pointer items-center justify-center rounded-2xl bg-stone-200 text-base font-semibold text-stone-900 shadow-sm transition hover:bg-stone-300 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-50"
+          className="mt-3 flex h-12 w-full cursor-pointer items-center justify-center rounded-2xl bg-brand-dark text-base font-semibold text-white shadow-sm transition hover:bg-brand-950 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-dark/40 focus-visible:ring-offset-2 active:scale-[0.99] disabled:cursor-not-allowed disabled:bg-stone-200 disabled:text-stone-500 disabled:opacity-60 disabled:shadow-none"
         >
           Buscar meus números
         </button>
@@ -544,14 +575,15 @@ export function RaffleClient({
 
       {ordersModalOpen ? (
         <div
-          className="fixed inset-0 z-50 flex items-end justify-center bg-brand-950/45 sm:items-center sm:p-5"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-brand-950/45"
           role="dialog"
           aria-modal="true"
           aria-labelledby="raffle-orders-title"
           onClick={() => setOrdersModalOpen(false)}
         >
+          <div className="mx-auto w-full max-w-lg px-5 compact:px-2.5">
           <div
-            className="flex max-h-[90dvh] w-full max-w-lg flex-col overflow-hidden rounded-t-[1.75rem] border border-white/70 bg-brand-bg shadow-[0_24px_60px_rgba(14,90,88,0.28)] sm:max-h-[85dvh] sm:rounded-[1.75rem]"
+            className="flex max-h-[85dvh] w-full flex-col overflow-hidden rounded-[1.75rem] border border-white/70 bg-brand-bg shadow-[0_24px_60px_rgba(14,90,88,0.28)]"
             onClick={(event) => event.stopPropagation()}
           >
             <div className="flex items-start justify-between gap-3 bg-brand-dark px-5 py-4 text-white">
@@ -649,13 +681,14 @@ export function RaffleClient({
               </button>
             </div>
           </div>
+          </div>
         </div>
       ) : null}
 
       <div className="rounded-[1.75rem] border border-white/70 bg-white/90 p-5">
         <h2 className="text-lg font-semibold text-stone-900">Números</h2>
         <p className="mt-1 text-sm text-stone-500">
-          Verde = pago · Amarelo = reservado · Branco = livre
+          Verde = comprado · Amarelo = reservado · Branco = livre
         </p>
         <div className="mt-4 grid w-full grid-cols-5 gap-1.5 sm:grid-cols-8 sm:gap-2 md:grid-cols-10">
           {numbers.map((item) => {
@@ -730,7 +763,7 @@ export function RaffleClient({
             onClick={handlePurchase}
             className="mt-4 flex h-14 w-full cursor-pointer items-center justify-center rounded-2xl bg-brand-dark text-lg font-semibold text-white shadow-sm transition hover:bg-brand-950 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-50"
           >
-            {pending ? "Preparando pagamento..." : "Pagar"}
+            {pending ? "Preparando compra..." : "Comprar"}
           </button>
         </div>
       ) : (

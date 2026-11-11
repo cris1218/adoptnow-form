@@ -41,6 +41,7 @@ export default async function RafflePage({
         token={token}
         initialRaffle={access.raffle}
         initialNumbers={access.numbers}
+        initialWinners={access.winners ?? []}
       />
     </SiteShell>
   );

@@ -5,9 +5,11 @@ import {
   mapBuyerOrders,
   mapPublicNumbers,
   mapPublicRaffle,
+  mapPublicWinners,
   type BuyerOrder,
   type PublicRaffle,
   type PublicRaffleNumber,
+  type PublicRaffleWinner,
 } from "@/lib/raffles";
 import {
   fullNameError,
@@ -31,6 +33,7 @@ export async function loadRafflePublic(token: string): Promise<{
   message?: string;
   raffle?: PublicRaffle;
   numbers?: PublicRaffleNumber[];
+  winners?: PublicRaffleWinner[];
 }> {
   const supabase = getSupabaseServer();
   const { data, error } = await supabase.rpc("get_raffle_public", {
@@ -45,6 +48,7 @@ export async function loadRafflePublic(token: string): Promise<{
     message?: string;
     raffle?: Record<string, unknown>;
     numbers?: unknown;
+    winners?: unknown;
   } | null;
   if (!payload?.ok || !payload.raffle) {
     return {
@@ -56,6 +60,7 @@ export async function loadRafflePublic(token: string): Promise<{
     ok: true,
     raffle: mapPublicRaffle(payload.raffle),
     numbers: mapPublicNumbers(payload.numbers),
+    winners: mapPublicWinners(payload.winners),
   };
 }
 
