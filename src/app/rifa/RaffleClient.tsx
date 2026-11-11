@@ -86,6 +86,7 @@ function WinnersPodium({ winners }: { winners: PublicRaffleWinner[] }) {
   const third = winners.find((w) => w.drawIndex === 3);
   const extras = winners.filter((w) => w.drawIndex > 3);
   const useClassicPodium = winners.length === 3;
+  const single = winners.length === 1 ? winners[0] : null;
 
   type PodiumSlot = {
     winner: PublicRaffleWinner;
@@ -139,35 +140,49 @@ function WinnersPodium({ winners }: { winners: PublicRaffleWinner[] }) {
     },
   } as const;
 
+  if (single) {
+    return (
+      <div className="rounded-[1.75rem] border border-emerald-200 bg-emerald-50 p-5 shadow-[0_18px_50px_rgba(14,90,88,0.12)]">
+        <div className="text-center">
+          <p className="text-3xl leading-none" aria-hidden="true">
+            🏆
+          </p>
+          <h2 className="mt-2 text-lg font-bold text-emerald-950">Ganhador</h2>
+          <p className="mt-1 text-sm text-emerald-800">
+            Parabéns ao contemplado
+          </p>
+        </div>
+        <div className="mt-4 rounded-2xl border border-emerald-200/80 bg-white px-4 py-4 text-center">
+          <p className="text-base font-bold leading-snug text-stone-900 sm:text-lg">
+            🎉 {single.buyerName || "Ganhador(a)"}
+          </p>
+          <p className="mt-1 text-sm font-semibold tabular-nums text-stone-600">
+            🎯 Nº {single.drawnNumber}
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="rounded-[1.75rem] border border-emerald-200 bg-gradient-to-b from-emerald-50 to-white p-5 shadow-[0_18px_50px_rgba(14,90,88,0.12)]">
       <div className="text-center">
         <p className="text-3xl leading-none" aria-hidden="true">
           🏆
         </p>
-        <h2 className="mt-2 text-lg font-bold text-emerald-950">
-          {winners.length > 1 ? "Pódio dos ganhadores" : "Ganhador"}
-        </h2>
+        <h2 className="mt-2 text-lg font-bold text-emerald-950">Ganhadores</h2>
         <p className="mt-1 text-sm text-emerald-800">
-          {winners.length > 1
-            ? "Confira quem levou cada prêmio"
-            : "Parabéns ao contemplado"}
+          Confira quem levou cada prêmio
         </p>
       </div>
 
-      <div
-        className={`mt-5 flex items-end justify-center gap-2 sm:gap-3 ${
-          podium.length === 1 ? "px-8" : ""
-        }`}
-      >
+      <div className="mt-5 flex items-end justify-center gap-2 sm:gap-3">
         {podium.map(({ winner, place, height }) => {
           const meta = placeMeta[place];
           return (
             <div
               key={`${winner.drawIndex}-${winner.drawnNumber}`}
-              className={`flex min-w-0 flex-1 flex-col items-center ${
-                podium.length === 1 ? "max-w-[14rem]" : ""
-              }`}
+              className="flex min-w-0 flex-1 flex-col items-center"
             >
               <div
                 className={`flex w-full flex-col items-center gap-1.5 rounded-2xl border px-2.5 py-3 text-center sm:px-3 ${meta.card}`}
