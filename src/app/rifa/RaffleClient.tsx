@@ -85,22 +85,38 @@ function WinnersPodium({ winners }: { winners: PublicRaffleWinner[] }) {
   const second = winners.find((w) => w.drawIndex === 2);
   const third = winners.find((w) => w.drawIndex === 3);
   const extras = winners.filter((w) => w.drawIndex > 3);
+  const useClassicPodium = winners.length === 3;
 
-  const podium = [
-    second
-      ? { winner: second, place: 2 as const, height: "h-28 sm:h-32" }
-      : null,
-    first
-      ? { winner: first, place: 1 as const, height: "h-36 sm:h-44" }
-      : null,
-    third
-      ? { winner: third, place: 3 as const, height: "h-24 sm:h-28" }
-      : null,
-  ].filter(Boolean) as Array<{
+  type PodiumSlot = {
     winner: PublicRaffleWinner;
     place: 1 | 2 | 3;
     height: string;
-  }>;
+  };
+
+  const podium: PodiumSlot[] = useClassicPodium
+    ? (
+        [
+          second
+            ? { winner: second, place: 2 as const, height: "h-28 sm:h-32" }
+            : null,
+          first
+            ? { winner: first, place: 1 as const, height: "h-36 sm:h-44" }
+            : null,
+          third
+            ? { winner: third, place: 3 as const, height: "h-24 sm:h-28" }
+            : null,
+        ] as Array<PodiumSlot | null>
+      ).filter((item): item is PodiumSlot => item != null)
+    : (
+        [
+          first
+            ? { winner: first, place: 1 as const, height: "h-36 sm:h-44" }
+            : null,
+          second
+            ? { winner: second, place: 2 as const, height: "h-28 sm:h-32" }
+            : null,
+        ] as Array<PodiumSlot | null>
+      ).filter((item): item is PodiumSlot => item != null);
 
   const placeMeta = {
     1: {
@@ -141,7 +157,7 @@ function WinnersPodium({ winners }: { winners: PublicRaffleWinner[] }) {
 
       <div
         className={`mt-5 flex items-end justify-center gap-2 sm:gap-3 ${
-          winners.length === 1 ? "px-8" : ""
+          podium.length === 1 ? "px-8" : ""
         }`}
       >
         {podium.map(({ winner, place, height }) => {
@@ -150,7 +166,7 @@ function WinnersPodium({ winners }: { winners: PublicRaffleWinner[] }) {
             <div
               key={`${winner.drawIndex}-${winner.drawnNumber}`}
               className={`flex min-w-0 flex-1 flex-col items-center ${
-                winners.length === 1 ? "max-w-[14rem]" : ""
+                podium.length === 1 ? "max-w-[14rem]" : ""
               }`}
             >
               <div
@@ -162,11 +178,11 @@ function WinnersPodium({ winners }: { winners: PublicRaffleWinner[] }) {
                 <p className="text-[11px] font-semibold uppercase tracking-wide text-stone-500">
                   {meta.label}
                 </p>
-                <p className="text-lg font-bold tabular-nums text-stone-900 sm:text-xl">
-                  🎯 Nº {winner.drawnNumber}
-                </p>
-                <p className="line-clamp-2 text-sm font-semibold leading-snug text-stone-700">
+                <p className="line-clamp-2 text-base font-bold leading-snug text-stone-900 sm:text-lg">
                   🎉 {winner.buyerName || "Ganhador(a)"}
+                </p>
+                <p className="text-sm font-semibold tabular-nums text-stone-600">
+                  🎯 Nº {winner.drawnNumber}
                 </p>
               </div>
               <div
