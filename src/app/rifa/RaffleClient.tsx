@@ -80,6 +80,131 @@ function formatCountdown(remainingMs: number): string {
   return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
 }
 
+function WinnersPodium({ winners }: { winners: PublicRaffleWinner[] }) {
+  const first = winners.find((w) => w.drawIndex === 1);
+  const second = winners.find((w) => w.drawIndex === 2);
+  const third = winners.find((w) => w.drawIndex === 3);
+  const extras = winners.filter((w) => w.drawIndex > 3);
+
+  const podium = [
+    second
+      ? { winner: second, place: 2 as const, height: "h-28 sm:h-32" }
+      : null,
+    first
+      ? { winner: first, place: 1 as const, height: "h-36 sm:h-44" }
+      : null,
+    third
+      ? { winner: third, place: 3 as const, height: "h-24 sm:h-28" }
+      : null,
+  ].filter(Boolean) as Array<{
+    winner: PublicRaffleWinner;
+    place: 1 | 2 | 3;
+    height: string;
+  }>;
+
+  const placeMeta = {
+    1: {
+      emoji: "🥇",
+      label: "1º prêmio",
+      step: "bg-brand-dark text-white",
+      card: "border-amber-300 bg-white shadow-[0_12px_28px_rgba(14,90,88,0.16)]",
+    },
+    2: {
+      emoji: "🥈",
+      label: "2º prêmio",
+      step: "bg-brand-dark/80 text-white",
+      card: "border-stone-200 bg-white/95",
+    },
+    3: {
+      emoji: "🥉",
+      label: "3º prêmio",
+      step: "bg-brand-dark/65 text-white",
+      card: "border-amber-800/20 bg-white/95",
+    },
+  } as const;
+
+  return (
+    <div className="rounded-[1.75rem] border border-emerald-200 bg-gradient-to-b from-emerald-50 to-white p-5 shadow-[0_18px_50px_rgba(14,90,88,0.12)]">
+      <div className="text-center">
+        <p className="text-3xl leading-none" aria-hidden="true">
+          🏆
+        </p>
+        <h2 className="mt-2 text-lg font-bold text-emerald-950">
+          {winners.length > 1 ? "Pódio dos ganhadores" : "Ganhador"}
+        </h2>
+        <p className="mt-1 text-sm text-emerald-800">
+          {winners.length > 1
+            ? "Confira quem levou cada prêmio"
+            : "Parabéns ao contemplado"}
+        </p>
+      </div>
+
+      <div
+        className={`mt-5 flex items-end justify-center gap-2 sm:gap-3 ${
+          winners.length === 1 ? "px-8" : ""
+        }`}
+      >
+        {podium.map(({ winner, place, height }) => {
+          const meta = placeMeta[place];
+          return (
+            <div
+              key={`${winner.drawIndex}-${winner.drawnNumber}`}
+              className={`flex min-w-0 flex-1 flex-col items-center ${
+                winners.length === 1 ? "max-w-[14rem]" : ""
+              }`}
+            >
+              <div
+                className={`flex w-full flex-col items-center gap-1.5 rounded-2xl border px-2.5 py-3 text-center sm:px-3 ${meta.card}`}
+              >
+                <span className="text-3xl leading-none" aria-hidden="true">
+                  {meta.emoji}
+                </span>
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-stone-500">
+                  {meta.label}
+                </p>
+                <p className="text-lg font-bold tabular-nums text-stone-900 sm:text-xl">
+                  🎯 Nº {winner.drawnNumber}
+                </p>
+                <p className="line-clamp-2 text-sm font-semibold leading-snug text-stone-700">
+                  🎉 {winner.buyerName || "Ganhador(a)"}
+                </p>
+              </div>
+              <div
+                className={`mt-2 flex w-full flex-col items-center justify-center gap-1 rounded-t-xl px-2 ${height} ${meta.step}`}
+              >
+                <span className="text-xl leading-none" aria-hidden="true">
+                  {meta.emoji}
+                </span>
+                <span className="text-center text-xs font-bold tracking-wide opacity-95 sm:text-sm">
+                  {meta.label}
+                </span>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {extras.length > 0 ? (
+        <ul className="mt-4 space-y-2 border-t border-emerald-200/80 pt-4">
+          {extras.map((winner) => (
+            <li
+              key={`${winner.drawIndex}-${winner.drawnNumber}`}
+              className="flex items-center justify-between gap-3 rounded-xl border border-emerald-200/80 bg-white/90 px-3 py-2.5"
+            >
+              <span className="min-w-0 text-sm font-semibold text-emerald-900">
+                🏅 {winner.drawIndex}º · {winner.buyerName || "Ganhador(a)"}
+              </span>
+              <span className="shrink-0 text-sm font-bold text-emerald-950">
+                🎯 Nº {winner.drawnNumber}
+              </span>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+    </div>
+  );
+}
+
 function RafflePhotoCarousel({ urls }: { urls: string[] }) {
   const [index, setIndex] = useState(0);
   const count = urls.length;
@@ -486,31 +611,7 @@ export function RaffleClient({
       ) : null}
 
       {raffle.status === "drawn" && displayWinners.length > 0 ? (
-        <div className="rounded-[1.75rem] border border-emerald-200 bg-emerald-50 p-5 shadow-[0_18px_50px_rgba(14,90,88,0.12)]">
-          <h2 className="text-lg font-bold text-emerald-950">
-            {displayWinners.length > 1 ? "Ganhadores" : "Ganhador"}
-          </h2>
-          <ul className="mt-3 space-y-3">
-            {displayWinners.map((winner) => (
-              <li
-                key={`${winner.drawIndex}-${winner.drawnNumber}`}
-                className="rounded-2xl border border-emerald-200/80 bg-white/90 px-4 py-3"
-              >
-                <p className="text-xs font-semibold uppercase tracking-wide text-emerald-800">
-                  {displayWinners.length > 1
-                    ? `${winner.drawIndex}º prêmio`
-                    : "Sorteio"}
-                </p>
-                <p className="mt-1 text-xl font-bold text-emerald-950">
-                  Número {winner.drawnNumber}
-                </p>
-                <p className="mt-0.5 text-base font-semibold text-emerald-900">
-                  {winner.buyerName || "Ganhador(a)"}
-                </p>
-              </li>
-            ))}
-          </ul>
-        </div>
+        <WinnersPodium winners={displayWinners} />
       ) : null}
 
       <div className="rounded-[1.75rem] border border-white/70 bg-white/90 p-5 shadow-[0_18px_50px_rgba(14,90,88,0.12)]">
