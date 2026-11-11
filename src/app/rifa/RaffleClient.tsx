@@ -361,6 +361,11 @@ export function RaffleClient({
   const paidHandledRef = useRef<string | null>(null);
 
   const canBuy = raffle.status === "open";
+  const hasAvailableNumbers = useMemo(
+    () => numbers.some((item) => item.status === "available"),
+    [numbers]
+  );
+  const soldOut = canBuy && !hasAvailableNumbers;
   const totalCents = selected.length * raffle.priceCents;
   const drawAtLabel = formatDrawAt(raffle.drawAt);
   const selectedSet = useMemo(() => new Set(selected), [selected]);
@@ -841,7 +846,12 @@ export function RaffleClient({
         </div>
       </div>
 
-      {canBuy ? (
+      {soldOut ? (
+        <p className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+          Não há números livres no momento. A rifa ainda está aberta — aguarde o
+          sorteio ou a liberação de alguma reserva.
+        </p>
+      ) : canBuy ? (
         <div className="rounded-[1.75rem] border border-white/70 bg-white/90 p-5">
           <h2 className="text-lg font-semibold text-stone-900">Comprar</h2>
           <p className="mt-1 text-sm text-stone-600">
@@ -902,7 +912,9 @@ export function RaffleClient({
         <p className="rounded-2xl bg-amber-50 px-4 py-3 text-sm text-amber-900">
           {raffle.status === "closed"
             ? `Vendas encerradas${drawAtLabel ? `. Sorteio em ${drawAtLabel}` : "."}`
-            : "Esta rifa não está aberta para novas compras."}
+            : raffle.status === "drawn"
+              ? "Esta rifa já foi sorteada."
+              : "Esta rifa não está aberta para novas compras."}
         </p>
       )}
 
