@@ -307,11 +307,11 @@ function RafflePhotoCarousel({ urls }: { urls: string[] }) {
 
   return (
     <>
-      <div className="relative overflow-hidden rounded-[1.75rem] border border-white/70 bg-stone-100 shadow-[0_18px_50px_rgba(14,90,88,0.12)]">
+      <div className="relative aspect-[4/3] w-full overflow-hidden rounded-[1.75rem] border border-white/70 bg-stone-100 shadow-[0_18px_50px_rgba(14,90,88,0.12)] sm:aspect-[16/10]">
         <button
           type="button"
           aria-label="Ampliar foto"
-          className="relative aspect-[4/3] w-full cursor-zoom-in sm:aspect-[16/10]"
+          className="absolute inset-0 block h-full w-full cursor-zoom-in border-0 bg-transparent p-0"
           onClick={() => setLightboxOpen(true)}
         >
           {urls.map((url, i) => (
