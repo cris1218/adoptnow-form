@@ -1,15 +1,23 @@
 "use server";
 
-import { createPixPayment } from "@/lib/mercadopago";
+import {
+  createCardPayment,
+  createPixPayment,
+  formatCardRejectionMessage,
+} from "@/lib/mercadopago";
+import { cardChargeCentsFromNet } from "@/lib/mpFees";
+import { notifyStaffRafflePaid } from "@/lib/notifyStaff";
 import {
   mapBuyerOrders,
   mapPublicNumbers,
   mapPublicRaffle,
   mapPublicWinners,
+  mapRafflePaymentMethod,
   type BuyerOrder,
   type PublicRaffle,
   type PublicRaffleNumber,
   type PublicRaffleWinner,
+  type RafflePaymentMethod,
 } from "@/lib/raffles";
 import {
   fullNameError,
@@ -26,6 +34,13 @@ function adminOrThrow() {
     throw new Error("SUPABASE_SERVICE_ROLE_KEY não configurada.");
   }
   return admin;
+}
+
+function raffleWebhookUrl() {
+  return `${
+    process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, "") ||
+    "https://recantoronron.vercel.app"
+  }/api/rifas/webhook`;
 }
 
 export async function loadRafflePublic(token: string): Promise<{
@@ -132,6 +147,7 @@ export async function purchaseRaffleNumbers(input: {
     const reserved = data as {
       ok?: boolean;
       order_id?: string;
+      raffle_id?: string;
       total_cents?: number;
       numbers?: number[];
       expires_at?: string;
@@ -162,6 +178,11 @@ export async function purchaseRaffleNumbers(input: {
       }
     };
 
+    await admin
+      .from("raffle_orders")
+      .update({ payment_method: "pix" satisfies RafflePaymentMethod })
+      .eq("id", reserved.order_id);
+
     let pix;
     try {
       pix = await createPixPayment({
@@ -169,9 +190,11 @@ export async function purchaseRaffleNumbers(input: {
         amountCents: totalCents,
         description: `Rifa · ${title} · números ${(reserved.numbers ?? input.numbers).join(",")}`,
         productKind: "rifa",
+        campaignId: String(reserved.raffle_id ?? ""),
         campaignTitle: title,
         buyerPhone: phone,
         expirationMinutes: 30,
+        notificationUrl: raffleWebhookUrl(),
       });
     } catch (pixError) {
       await releaseReservedOrder();
@@ -203,6 +226,7 @@ export async function purchaseRaffleNumbers(input: {
         status: "awaiting_payment",
         numbers: reserved.numbers ?? input.numbers,
         totalCents,
+        paymentMethod: "pix",
         pixCopyPaste: pix.qrCode,
         pixQrBase64: pix.qrCodeBase64,
         pixTicketUrl: pix.ticketUrl || undefined,
@@ -226,6 +250,222 @@ export async function purchaseRaffleNumbers(input: {
   }
 }
 
+export async function payRaffleWithCard(input: {
+  token: string;
+  numbers: number[];
+  buyerName: string;
+  buyerPhone: string;
+  cardToken: string;
+  paymentMethodId: string;
+  issuerId?: string | number | null;
+  installments?: number;
+}): Promise<{
+  ok: boolean;
+  message?: string;
+  order?: BuyerOrder;
+}> {
+  const phone = normalizePhone(input.buyerPhone);
+  const name = normalizeFullName(input.buyerName);
+  const nameError = fullNameError(name);
+  if (nameError) {
+    return { ok: false, message: nameError };
+  }
+  const buyerPhoneError = phoneError(phone);
+  if (buyerPhoneError) {
+    return { ok: false, message: buyerPhoneError };
+  }
+  if (!input.numbers.length) {
+    return { ok: false, message: "Selecione ao menos um número." };
+  }
+
+  try {
+    const admin = adminOrThrow();
+    const { data, error } = await admin.rpc("reserve_raffle_numbers", {
+      p_token: input.token.trim(),
+      p_numbers: input.numbers,
+      p_buyer_name: name,
+      p_buyer_phone: phone,
+    });
+
+    if (error) {
+      return {
+        ok: false,
+        message: error.message || "Não foi possível reservar os números.",
+      };
+    }
+
+    const reserved = data as {
+      ok?: boolean;
+      order_id?: string;
+      raffle_id?: string;
+      total_cents?: number;
+      numbers?: number[];
+      expires_at?: string;
+      title?: string;
+    } | null;
+
+    if (!reserved?.ok || !reserved.order_id) {
+      return { ok: false, message: "Não foi possível reservar os números." };
+    }
+
+    const totalCents = Number(reserved.total_cents ?? 0);
+    const title = String(reserved.title ?? "Rifa");
+    const numbers = reserved.numbers ?? input.numbers;
+    const chargeCents = cardChargeCentsFromNet(totalCents);
+
+    const releaseReservedOrder = async () => {
+      try {
+        await admin
+          .from("raffle_orders")
+          .update({ expires_at: "1970-01-01T00:00:00" })
+          .eq("id", reserved.order_id)
+          .eq("status", "awaiting_payment");
+        await admin.rpc("release_expired_raffle_orders", {
+          p_raffle_id: null,
+        });
+      } catch (releaseError) {
+        console.error("release after card failure", releaseError);
+      }
+    };
+
+    await admin
+      .from("raffle_orders")
+      .update({ payment_method: "credit_card" satisfies RafflePaymentMethod })
+      .eq("id", reserved.order_id);
+
+    let card;
+    try {
+      card = await createCardPayment({
+        orderId: reserved.order_id,
+        amountCents: chargeCents,
+        description: `Rifa · ${title} · números ${numbers.join(",")}`,
+        productKind: "rifa",
+        campaignId: String(reserved.raffle_id ?? ""),
+        campaignTitle: title,
+        token: input.cardToken,
+        paymentMethodId: input.paymentMethodId,
+        installments: input.installments ?? 1,
+        issuerId: input.issuerId,
+        buyerPhone: phone,
+        notificationUrl: raffleWebhookUrl(),
+      });
+    } catch (cardError) {
+      await releaseReservedOrder();
+      return {
+        ok: false,
+        message:
+          cardError instanceof Error
+            ? cardError.message
+            : "Não foi possível cobrar o cartão.",
+      };
+    }
+
+    const rejected =
+      card.status === "rejected" ||
+      card.status === "cancelled" ||
+      card.status === "refunded";
+
+    if (rejected) {
+      await releaseReservedOrder();
+      return {
+        ok: false,
+        message: formatCardRejectionMessage(card.statusDetail),
+      };
+    }
+
+    const { error: attachError } = await admin.rpc("attach_raffle_order_pix", {
+      p_order_id: reserved.order_id,
+      p_mp_payment_id: card.id,
+      p_pix_copy_paste: "",
+      p_pix_qr_base64: "",
+    });
+
+    if (attachError) {
+      console.error("attach_raffle_order_pix card", attachError);
+      await releaseReservedOrder();
+      return {
+        ok: false,
+        message:
+          attachError.message ||
+          "Não foi possível registrar o pagamento. Tente de novo.",
+      };
+    }
+
+    let status: BuyerOrder["status"] = "awaiting_payment";
+    let paidAt: string | null = null;
+
+    if (card.status === "approved") {
+      const { data: markData, error: markError } = await admin.rpc(
+        "mark_raffle_order_paid",
+        {
+          p_order_id: reserved.order_id,
+          p_mp_payment_id: card.id,
+          p_amount_cents: chargeCents,
+        }
+      );
+      if (markError) {
+        console.error("mark_raffle_order_paid card", markError);
+      } else {
+        const markResult = markData as {
+          ok?: boolean;
+          status?: string;
+          duplicate?: boolean;
+        } | null;
+        if (markResult?.ok && markResult.status === "paid") {
+          status = "paid";
+          paidAt = new Date().toISOString();
+          if (!markResult.duplicate) {
+            try {
+              await notifyStaffRafflePaid({
+                raffleId: String(reserved.raffle_id ?? ""),
+                orderId: reserved.order_id,
+                raffleTitle: title,
+                buyerName: name,
+                numbers,
+                totalCents,
+              });
+            } catch (notifyError) {
+              console.error("notifyStaffRafflePaid card", notifyError);
+            }
+          }
+        }
+      }
+    }
+
+    return {
+      ok: true,
+      order: {
+        id: reserved.order_id,
+        status,
+        numbers,
+        totalCents,
+        paymentMethod: "credit_card",
+        pixCopyPaste: "",
+        pixQrBase64: "",
+        paymentProofUrl: "",
+        expiresAt: reserved.expires_at ?? null,
+        paidAt,
+        createdAt: null,
+        buyerPhone: phone,
+        buyerName: name,
+      },
+      message:
+        status === "paid"
+          ? undefined
+          : "Pagamento em análise. Aguarde a confirmação.",
+    };
+  } catch (error) {
+    console.error("payRaffleWithCard", error);
+    return {
+      ok: false,
+      message:
+        error instanceof Error
+          ? error.message
+          : "Não foi possível processar o cartão.",
+    };
+  }
+}
+
 export async function getRaffleOrderPaymentStatus(input: {
   token: string;
   orderId: string;
@@ -244,7 +484,7 @@ export async function getRaffleOrderPaymentStatus(input: {
     const { data: orderRow, error } = await admin
       .from("raffle_orders")
       .select(
-        "id, raffle_id, buyer_name, buyer_phone, numbers, total_cents, status, expires_at, paid_at, created_at, pix_copy_paste, pix_qr_base64, payment_proof_url"
+        "id, raffle_id, buyer_name, buyer_phone, numbers, total_cents, status, expires_at, paid_at, created_at, pix_copy_paste, pix_qr_base64, payment_proof_url, payment_method"
       )
       .eq("id", input.orderId)
       .maybeSingle();
@@ -270,6 +510,7 @@ export async function getRaffleOrderPaymentStatus(input: {
         ? (orderRow.numbers as number[])
         : [],
       totalCents: Number(orderRow.total_cents ?? 0),
+      paymentMethod: mapRafflePaymentMethod(orderRow.payment_method),
       pixCopyPaste: String(orderRow.pix_copy_paste ?? ""),
       pixQrBase64: String(orderRow.pix_qr_base64 ?? ""),
       paymentProofUrl: String(orderRow.payment_proof_url ?? ""),

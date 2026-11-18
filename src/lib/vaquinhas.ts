@@ -45,26 +45,12 @@ export function formatCentsBrl(cents: number): string {
   });
 }
 
-/**
- * Taxa MP Checkout Transparente · crédito · recebimento na hora (D0).
- * O doador paga a taxa: cobramos ceil(doação / (1 - taxa)) para o líquido ≈ doação.
- */
-export const VAQUINHA_CARD_FEE_RATE = 0.0498;
-/** Basis points da taxa (4,98% → 498) para aritmética inteira estável. */
-export const VAQUINHA_CARD_FEE_BPS = 498;
-
-/** Valor cobrado no cartão para que o líquido após a taxa ≈ doação. */
-export function cardChargeCentsFromDonation(donationCents: number): number {
-  const donation = Math.max(0, Math.floor(donationCents));
-  if (donation <= 0) return 0;
-  const denominator = 10_000 - VAQUINHA_CARD_FEE_BPS;
-  return Math.ceil((donation * 10_000) / denominator);
-}
-
-export function cardFeeCentsFromDonation(donationCents: number): number {
-  const donation = Math.max(0, Math.floor(donationCents));
-  return Math.max(0, cardChargeCentsFromDonation(donation) - donation);
-}
+export {
+  MP_CARD_FEE_BPS as VAQUINHA_CARD_FEE_BPS,
+  MP_CARD_FEE_RATE as VAQUINHA_CARD_FEE_RATE,
+  cardChargeCentsFromDonation,
+  cardFeeCentsFromDonation,
+} from "@/lib/mpFees";
 
 export function vaquinhaProgressPercent(
   raisedCents: number,

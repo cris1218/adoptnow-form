@@ -1,14 +1,20 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 
 import {
   getRaffleOrderPaymentStatus,
   lookupRaffleOrdersByPhone,
+  payRaffleWithCard,
   purchaseRaffleNumbers,
 } from "@/app/rifa/actions";
 import { SiteAlert, type SiteAlertState } from "@/components/SiteAlert";
 import { pixQrImageUrl } from "@/lib/pixBrCode";
+import {
+  cardChargeCentsFromNet,
+  cardFeeCentsFromNet,
+} from "@/lib/mpFees";
 import {
   formatCentsBrl,
   type BuyerOrder,
@@ -16,6 +22,7 @@ import {
   type PublicRaffleNumber,
   type PublicRaffleWinner,
   type RaffleNumberStatus,
+  type RafflePaymentMethod,
 } from "@/lib/raffles";
 import {
   FieldError,
@@ -27,6 +34,19 @@ import {
   phoneError,
 } from "@/lib/masks";
 
+const VaquinhaCardBrick = dynamic(
+  () =>
+    import("@/components/VaquinhaCardBrick").then(
+      (mod) => mod.VaquinhaCardBrick
+    ),
+  {
+    ssr: false,
+    loading: () => (
+      <p className="text-sm text-stone-500">Carregando cartão...</p>
+    ),
+  }
+);
+
 function cellClass(status: RaffleNumberStatus, selected: boolean) {
   if (selected) return "border-brand-dark bg-brand-dark text-white";
   if (status === "paid") return "border-emerald-600 bg-emerald-50 text-emerald-900";
@@ -34,9 +54,16 @@ function cellClass(status: RaffleNumberStatus, selected: boolean) {
   return "border-stone-300 bg-white text-stone-900";
 }
 
-function orderStatusLabel(status: BuyerOrder["status"]): string {
+function orderStatusLabel(
+  status: BuyerOrder["status"],
+  paymentMethod?: RafflePaymentMethod
+): string {
   if (status === "paid") return "Pago";
-  if (status === "awaiting_payment") return "Aguardando Pix";
+  if (status === "awaiting_payment") {
+    return paymentMethod === "credit_card"
+      ? "Aguardando cartão"
+      : "Aguardando Pix";
+  }
   if (status === "rejected") return "Rejeitado";
   return "Expirado";
 }
@@ -445,6 +472,14 @@ export function RaffleClient({
   const [pixCopied, setPixCopied] = useState(false);
   const [remainingMs, setRemainingMs] = useState(0);
   const [paymentConfirmed, setPaymentConfirmed] = useState(false);
+  const [payMethod, setPayMethod] = useState<RafflePaymentMethod>("pix");
+  const [cardModalOpen, setCardModalOpen] = useState(false);
+  const [cardProcessing, setCardProcessing] = useState(false);
+  const [cardWaiting, setCardWaiting] = useState(false);
+  const [cardRejectMessage, setCardRejectMessage] = useState<string | null>(
+    null
+  );
+  const [cardBrickKey, setCardBrickKey] = useState(0);
   const [pending, startTransition] = useTransition();
   const pixSectionRef = useRef<HTMLDivElement>(null);
   const pixCopyPasteRef = useRef<HTMLTextAreaElement>(null);
@@ -459,6 +494,16 @@ export function RaffleClient({
   );
   const soldOut = canBuy && !hasAvailableNumbers;
   const totalCents = selected.length * raffle.priceCents;
+  const cardNetCents =
+    selected.length > 0
+      ? totalCents
+      : activeOrder?.paymentMethod === "credit_card"
+        ? activeOrder.totalCents
+        : 0;
+  const cardChargeCents =
+    cardNetCents > 0 ? cardChargeCentsFromNet(cardNetCents) : null;
+  const cardFeeCents =
+    cardNetCents > 0 ? cardFeeCentsFromNet(cardNetCents) : null;
   const drawAtLabel = formatDrawAt(raffle.drawAt);
   const selectedSet = useMemo(() => new Set(selected), [selected]);
   const buyerNameError = fullNameError(buyerName);
@@ -474,6 +519,7 @@ export function RaffleClient({
 
   useEffect(() => {
     if (!activeOrder || activeOrder.status !== "awaiting_payment") return;
+    if (activeOrder.paymentMethod === "credit_card") return;
     setPixCopied(false);
     const frame = window.requestAnimationFrame(() => {
       pixSectionRef.current?.scrollIntoView({
@@ -482,7 +528,7 @@ export function RaffleClient({
       });
     });
     return () => window.cancelAnimationFrame(frame);
-  }, [activeOrder?.id, activeOrder?.status]);
+  }, [activeOrder?.id, activeOrder?.status, activeOrder?.paymentMethod]);
 
   useEffect(() => {
     if (!activeOrder?.expiresAt || activeOrder.status !== "awaiting_payment") {
@@ -514,9 +560,11 @@ export function RaffleClient({
 
     showAlert(
       "Tempo esgotado",
-      "Os números voltaram a ficar livres. Escolha de novo e gere outro Pix.",
+      "Os números voltaram a ficar livres. Escolha de novo e pague novamente.",
       "error"
     );
+    setCardModalOpen(false);
+    setCardWaiting(false);
     setActiveOrder(null);
     window.setTimeout(() => window.location.reload(), 900);
   }, [remainingMs, activeOrder?.id, activeOrder?.status, activeOrder?.expiresAt]);
@@ -546,6 +594,8 @@ export function RaffleClient({
               : item
           )
         );
+        setCardModalOpen(false);
+        setCardWaiting(false);
         setActiveOrder(null);
         setPaymentConfirmed(true);
         if (paidPhone) setLookupPhone(maskPhone(paidPhone));
@@ -667,7 +717,7 @@ export function RaffleClient({
     if (!buyerName && order.buyerName) setBuyerName(order.buyerName);
   }
 
-  function handlePurchase() {
+  function validateBuyer(): boolean {
     setBuyerNameTouched(true);
     setBuyerPhoneTouched(true);
     if (buyerNameError || buyerPhoneError) {
@@ -676,8 +726,107 @@ export function RaffleClient({
         buyerNameError || buyerPhoneError || "Confira nome e WhatsApp.",
         "error"
       );
-      return;
+      return false;
     }
+    if (selected.length === 0) {
+      showAlert("Números", "Selecione ao menos um número.", "error");
+      return false;
+    }
+    return true;
+  }
+
+  function clearBuyerForm() {
+    setSelected([]);
+    setBuyerName("");
+    setBuyerPhone("");
+    setBuyerNameTouched(false);
+    setBuyerPhoneTouched(false);
+  }
+
+  function markNumbersLocal(
+    orderNumbers: number[],
+    status: RaffleNumberStatus
+  ) {
+    setNumbers((current) =>
+      current.map((item) =>
+        orderNumbers.includes(item.number) ? { ...item, status } : item
+      )
+    );
+  }
+
+  function openCardModal() {
+    if (!canBuy) return;
+    if (!validateBuyer()) return;
+    setCardRejectMessage(null);
+    setCardWaiting(false);
+    setCardProcessing(false);
+    setCardBrickKey((current) => current + 1);
+    setCardModalOpen(true);
+  }
+
+  function closeCardModal() {
+    if (cardProcessing || cardWaiting) return;
+    setCardModalOpen(false);
+    setCardRejectMessage(null);
+  }
+
+  async function handlePayCard(data: {
+    cardToken: string;
+    paymentMethodId: string;
+    issuerId?: string | number | null;
+    installments: number;
+  }) {
+    setCardRejectMessage(null);
+    setCardProcessing(true);
+    try {
+      const result = await payRaffleWithCard({
+        token,
+        numbers: selected,
+        buyerName,
+        buyerPhone,
+        cardToken: data.cardToken,
+        paymentMethodId: data.paymentMethodId,
+        issuerId: data.issuerId,
+        installments: data.installments,
+      });
+
+      if (!result.ok || !result.order) {
+        setCardRejectMessage(
+          result.message || "Pagamento recusado. Tente outro cartão."
+        );
+        setCardBrickKey((current) => current + 1);
+        throw new Error(result.message || "Pagamento recusado");
+      }
+
+      markNumbersLocal(
+        result.order.numbers,
+        result.order.status === "paid" ? "paid" : "reserved"
+      );
+      setActiveOrder(result.order);
+      clearBuyerForm();
+
+      if (result.order.status === "paid") {
+        setPaymentConfirmed(true);
+        setCardModalOpen(false);
+        setCardWaiting(false);
+        setActiveOrder(null);
+        showAlert(
+          "Pagamento confirmado",
+          "Seus números estão garantidos. Boa sorte no sorteio!",
+          "success"
+        );
+        return;
+      }
+
+      setCardWaiting(true);
+      setPaymentConfirmed(false);
+    } finally {
+      setCardProcessing(false);
+    }
+  }
+
+  function handlePurchasePix() {
+    if (!validateBuyer()) return;
     startTransition(async () => {
       const result = await purchaseRaffleNumbers({
         token,
@@ -694,18 +843,8 @@ export function RaffleClient({
         return;
       }
       setActiveOrder(result.order);
-      setSelected([]);
-      setBuyerName("");
-      setBuyerPhone("");
-      setBuyerNameTouched(false);
-      setBuyerPhoneTouched(false);
-      setNumbers((current) =>
-        current.map((item) =>
-          result.order!.numbers.includes(item.number)
-            ? { ...item, status: "reserved" }
-            : item
-        )
-      );
+      markNumbersLocal(result.order.numbers, "reserved");
+      clearBuyerForm();
       showAlert(
         "Pedido reservado",
         "Pague em até 5 minutos. A confirmação é automática.",
@@ -717,6 +856,7 @@ export function RaffleClient({
   const showPix =
     Boolean(activeOrder) &&
     activeOrder?.status === "awaiting_payment" &&
+    activeOrder.paymentMethod !== "credit_card" &&
     Boolean(activeOrder.pixCopyPaste || activeOrder.pixTicketUrl);
 
   const displayWinners =
@@ -986,19 +1126,73 @@ export function RaffleClient({
             id="buyer-phone-error"
             message={buyerPhoneTouched ? buyerPhoneError : ""}
           />
-          <button
-            type="button"
-            disabled={
-              pending ||
-              selected.length === 0 ||
-              Boolean(buyerNameError) ||
-              Boolean(buyerPhoneError)
-            }
-            onClick={handlePurchase}
-            className="mt-4 flex h-14 w-full cursor-pointer items-center justify-center rounded-2xl bg-brand-dark text-lg font-semibold text-white shadow-sm transition hover:bg-brand-950 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            {pending ? "Preparando compra..." : "Comprar"}
-          </button>
+
+          <div className="mt-4 space-y-2">
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => setPayMethod("pix")}
+                className={`rounded-xl border px-3 py-3 text-sm font-semibold ${
+                  payMethod === "pix"
+                    ? "border-brand-dark bg-brand-dark text-white"
+                    : "border-stone-300 bg-white text-stone-800"
+                }`}
+              >
+                Pix
+              </button>
+              <button
+                type="button"
+                onClick={() => setPayMethod("credit_card")}
+                className={`rounded-xl border px-3 py-3 text-sm font-semibold ${
+                  payMethod === "credit_card"
+                    ? "border-brand-dark bg-brand-dark text-white"
+                    : "border-stone-300 bg-white text-stone-800"
+                }`}
+              >
+                Cartão de crédito
+              </button>
+            </div>
+            {payMethod === "credit_card" &&
+            cardChargeCents != null &&
+            cardFeeCents != null &&
+            selected.length > 0 ? (
+              <p className="text-xs text-stone-600">
+                No cartão de crédito, a taxa do Mercado Pago (4,98%) fica no
+                cobrado: {formatCentsBrl(cardChargeCents)} (números{" "}
+                {formatCentsBrl(totalCents)} + taxa{" "}
+                {formatCentsBrl(cardFeeCents)}). Parcela mínima R$ 100.
+              </p>
+            ) : null}
+          </div>
+
+          {payMethod === "credit_card" ? (
+            <button
+              type="button"
+              disabled={
+                selected.length === 0 ||
+                Boolean(buyerNameError) ||
+                Boolean(buyerPhoneError)
+              }
+              onClick={openCardModal}
+              className="mt-4 flex h-14 w-full cursor-pointer items-center justify-center rounded-2xl bg-brand-dark text-lg font-semibold text-white shadow-sm transition hover:bg-brand-950 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              Pagar com cartão de crédito
+            </button>
+          ) : (
+            <button
+              type="button"
+              disabled={
+                pending ||
+                selected.length === 0 ||
+                Boolean(buyerNameError) ||
+                Boolean(buyerPhoneError)
+              }
+              onClick={handlePurchasePix}
+              className="mt-4 flex h-14 w-full cursor-pointer items-center justify-center rounded-2xl bg-brand-dark text-lg font-semibold text-white shadow-sm transition hover:bg-brand-950 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {pending ? "Preparando Pix..." : "Comprar com Pix"}
+            </button>
+          )}
         </div>
       ) : (
         <p className="rounded-2xl bg-amber-50 px-4 py-3 text-sm text-amber-900">
@@ -1016,7 +1210,10 @@ export function RaffleClient({
           className="scroll-mt-4 rounded-[1.75rem] border border-brand-200 bg-white p-5"
         >
           <h2 className="text-lg font-semibold text-stone-900">
-            {orderStatusLabel(activeOrder.status)}
+            {orderStatusLabel(
+              activeOrder.status,
+              activeOrder.paymentMethod
+            )}
           </h2>
           {activeOrder.buyerName ? (
             <p className="mt-1 text-sm font-medium text-stone-800">
@@ -1091,13 +1288,111 @@ export function RaffleClient({
                 Pagou? A confirmação é automática. Pode deixar esta tela aberta.
               </p>
             </>
+          ) : activeOrder.paymentMethod === "credit_card" ? (
+            <div className="mt-4 rounded-2xl border border-sky-200 bg-sky-50 px-4 py-4">
+              <p className="text-sm font-semibold text-sky-950">
+                Aguardando confirmação do cartão...
+              </p>
+              <p className="mt-1 text-sm text-sky-800">
+                A confirmação é automática. Pode deixar esta tela aberta.
+              </p>
+            </div>
           ) : null}
         </div>
       ) : null}
 
       <p className="text-center text-xs text-stone-400">
-        A reserva dos números vale por 5 minutos até o Pix ser pago.
+        A reserva dos números vale por 5 minutos até o pagamento ser confirmado.
       </p>
+
+      {cardModalOpen &&
+      cardChargeCents != null &&
+      cardChargeCents >= 500 ? (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-brand-950/45"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="raffle-card-title"
+        >
+          <div className="mx-auto w-full max-w-lg px-5 compact:px-2.5">
+            <div
+              className="flex max-h-[90dvh] w-full flex-col overflow-hidden rounded-[1.75rem] border border-white/70 bg-white shadow-[0_24px_60px_rgba(14,90,88,0.28)]"
+              onClick={(event) => event.stopPropagation()}
+            >
+              <div className="flex shrink-0 items-start justify-between gap-3 bg-brand-dark px-5 py-4 text-white">
+                <div className="min-w-0">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-white/75">
+                    Cartão de crédito
+                  </p>
+                  <h2
+                    id="raffle-card-title"
+                    className="mt-1 text-xl font-bold tracking-tight"
+                  >
+                    Pagar rifa
+                  </h2>
+                  <p className="mt-1 text-sm text-white/85">
+                    Total {formatCentsBrl(cardChargeCents)}
+                  </p>
+                  {cardFeeCents != null ? (
+                    <p className="mt-0.5 text-xs text-white/70">
+                      Números {formatCentsBrl(cardNetCents)} + taxa{" "}
+                      {formatCentsBrl(cardFeeCents)}
+                    </p>
+                  ) : null}
+                </div>
+                <button
+                  type="button"
+                  aria-label="Fechar"
+                  disabled={cardProcessing || cardWaiting}
+                  className="flex h-9 w-9 shrink-0 cursor-pointer items-center justify-center rounded-xl bg-white/15 text-xl leading-none transition hover:bg-white/25 disabled:cursor-not-allowed disabled:opacity-50"
+                  onClick={closeCardModal}
+                >
+                  ×
+                </button>
+              </div>
+
+              <div className="overflow-y-auto overscroll-contain px-4 py-4">
+                {cardWaiting ? (
+                  <div className="rounded-2xl border border-sky-200 bg-sky-50 px-4 py-4">
+                    <p className="text-sm font-semibold text-sky-950">
+                      Aguardando confirmação do pagamento...
+                    </p>
+                    <p className="mt-1 text-sm text-sky-800">
+                      A modal fecha automaticamente quando o pagamento for
+                      aprovado.
+                    </p>
+                  </div>
+                ) : (
+                  <>
+                    {cardRejectMessage ? (
+                      <div className="mb-4 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3">
+                        <p className="text-sm font-semibold text-rose-900">
+                          Pagamento recusado
+                        </p>
+                        <p className="mt-1 text-sm text-rose-800">
+                          {cardRejectMessage}
+                        </p>
+                      </div>
+                    ) : null}
+                    <VaquinhaCardBrick
+                      amountCents={cardChargeCents}
+                      brickKey={`raffle-card-${cardBrickKey}`}
+                      disabled={cardProcessing}
+                      onPay={handlePayCard}
+                      onError={(message) => setCardRejectMessage(message)}
+                    />
+                    {cardProcessing ? (
+                      <p className="mt-3 text-sm font-medium text-brand-dark">
+                        Processando cartão...
+                      </p>
+                    ) : null}
+                  </>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       <SiteAlert alert={alert} onClose={() => setAlert(null)} />
     </div>

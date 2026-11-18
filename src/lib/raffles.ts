@@ -32,11 +32,14 @@ export type PublicRaffleWinner = {
   buyerName: string;
 };
 
+export type RafflePaymentMethod = "pix" | "credit_card";
+
 export type BuyerOrder = {
   id: string;
   status: RaffleOrderStatus;
   numbers: number[];
   totalCents: number;
+  paymentMethod?: RafflePaymentMethod;
   pixCopyPaste: string;
   pixQrBase64: string;
   /** Link do ticket Pix do Mercado Pago (só na sessão após gerar). */
@@ -48,6 +51,10 @@ export type BuyerOrder = {
   buyerPhone?: string;
   buyerName?: string;
 };
+
+export function mapRafflePaymentMethod(raw: unknown): RafflePaymentMethod {
+  return raw === "credit_card" ? "credit_card" : "pix";
+}
 
 export function formatCentsBrl(cents: number): string {
   return (cents / 100).toLocaleString("pt-BR", {
@@ -112,6 +119,7 @@ export function mapBuyerOrders(raw: unknown): BuyerOrder[] {
       status: row.status as BuyerOrder["status"],
       numbers: Array.isArray(row.numbers) ? (row.numbers as number[]) : [],
       totalCents: Number(row.total_cents ?? 0),
+      paymentMethod: mapRafflePaymentMethod(row.payment_method),
       pixCopyPaste: String(row.pix_copy_paste ?? ""),
       pixQrBase64: String(row.pix_qr_base64 ?? ""),
       paymentProofUrl: String(row.payment_proof_url ?? ""),
@@ -124,9 +132,13 @@ export function mapBuyerOrders(raw: unknown): BuyerOrder[] {
   });
 }
 
-/** Usado só na V2 (Mercado Pago). Mantido para o módulo não quebrar o build. */
-export function technicalPayerEmail(phone: string): string {
+/** E-mail técnico do pagador no Checkout Transparente (MP exige e-mail válido). */
+export function technicalPayerEmail(
+  phone: string,
+  product: "vaquinha" | "rifa" = "rifa"
+): string {
   const digits = phone.replace(/\D/g, "") || "00000000000";
-  // MP valida o e-mail; .invalid é rejeitado. Domínio técnico do site.
-  return `rifa.${digits}@recantoronron.vercel.app`;
+  const prefix = product === "vaquinha" ? "vaquinha" : "rifa";
+  // .invalid é rejeitado pelo MP; domínio técnico do site.
+  return `${prefix}.${digits}@recantoronron.vercel.app`;
 }

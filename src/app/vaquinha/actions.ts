@@ -3,6 +3,7 @@
 import {
   createCardPayment,
   createPixPayment,
+  formatCardRejectionMessage,
 } from "@/lib/mercadopago";
 import {
   fullNameError,
@@ -27,28 +28,6 @@ function vaquinhaWebhookUrl() {
     process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, "") ||
     "https://recantoronron.vercel.app"
   }/api/vaquinhas/webhook`;
-}
-
-function formatCardRejectionMessage(statusDetail: string): string {
-  const detail = statusDetail.trim();
-  const known: Record<string, string> = {
-    cc_rejected_bad_filled_card_number: "Número do cartão inválido.",
-    cc_rejected_bad_filled_date: "Data de validade inválida.",
-    cc_rejected_bad_filled_security_code: "Código de segurança inválido.",
-    cc_rejected_bad_filled_other: "Dados do cartão inválidos.",
-    cc_rejected_insufficient_amount: "Cartão sem limite suficiente.",
-    cc_rejected_high_risk: "Pagamento recusado por segurança.",
-    cc_rejected_blacklist: "Pagamento recusado pelo emissor.",
-    cc_rejected_call_for_authorize: "Autorize no banco e tente de novo.",
-    cc_rejected_card_disabled: "Cartão desabilitado. Contate o banco.",
-    cc_rejected_duplicated_payment: "Pagamento duplicado.",
-    cc_rejected_invalid_installments: "Parcelamento não permitido neste cartão.",
-    cc_rejected_max_attempts: "Muitas tentativas. Tente outro cartão.",
-    cc_rejected_other_reason: "Pagamento recusado pelo emissor.",
-  };
-  if (detail && known[detail]) return known[detail];
-  if (detail) return `Pagamento recusado (${detail}).`;
-  return "Pagamento recusado. Tente outro cartão ou use Pix.";
 }
 
 function adminOrThrow() {

@@ -86,11 +86,23 @@ async function postPixPayment(input: {
   const expires = new Date(
     Date.now() + input.expirationMinutes * 60_000
   ).toISOString();
-  const campaignTitle = (input.campaignTitle ?? "").trim() || input.description;
+  const campaignTitle = (() => {
+    const raw = (input.campaignTitle ?? "").trim();
+    if (raw) return raw;
+    return input.description
+      .replace(/^(Vaquinha|Rifa)\s*·\s*/i, "")
+      .trim();
+  })();
   const itemTitle =
     input.productKind === "vaquinha"
       ? `Vaquinha · ${campaignTitle}`.slice(0, 200)
       : `Rifa · ${campaignTitle}`.slice(0, 200);
+  const description =
+    input.productKind === "vaquinha"
+      ? `Vaquinha · ${campaignTitle}`.slice(0, 200)
+      : input.description.slice(0, 200).startsWith("Rifa")
+        ? input.description.slice(0, 200)
+        : `Rifa · ${campaignTitle}`.slice(0, 200);
   const response = await fetch(`${MP_API}/v1/payments`, {
     method: "POST",
     headers: {
@@ -100,11 +112,11 @@ async function postPixPayment(input: {
     },
     body: JSON.stringify({
       transaction_amount: input.amount,
-      description: input.description.slice(0, 200),
+      description,
       payment_method_id: "pix",
       date_of_expiration: expires,
       payer: {
-        email: technicalPayerEmail(input.buyerPhone),
+        email: technicalPayerEmail(input.buyerPhone, input.productKind),
       },
       external_reference: mercadoPagoExternalReference(
         input.productKind,
@@ -122,7 +134,7 @@ async function postPixPayment(input: {
           {
             id: input.campaignId || input.orderId,
             title: itemTitle,
-            description: input.description.slice(0, 200),
+            description,
             category_id: "donations",
             quantity: 1,
             unit_price: input.amount,
@@ -255,20 +267,33 @@ export async function createCardPayment(input: {
     Math.min(input.installments ?? 1, maxInstallments)
   );
   const productKind = input.productKind ?? "vaquinha";
-  const campaignTitle =
-    (input.campaignTitle ?? "").trim() || input.description.slice(0, 120);
+  const campaignTitle = (() => {
+    const raw = (input.campaignTitle ?? "").trim();
+    if (raw) return raw;
+    // Evita "Vaquinha · Vaquinha · …" se description já veio prefixada.
+    return input.description
+      .replace(/^(Vaquinha|Rifa)\s*·\s*/i, "")
+      .trim()
+      .slice(0, 120);
+  })();
   const itemTitle =
     productKind === "vaquinha"
       ? `Vaquinha · ${campaignTitle}`.slice(0, 200)
       : `Rifa · ${campaignTitle}`.slice(0, 200);
+  const description =
+    productKind === "vaquinha"
+      ? `Vaquinha · ${campaignTitle}`.slice(0, 200)
+      : input.description.slice(0, 200).startsWith("Rifa")
+        ? input.description.slice(0, 200)
+        : `Rifa · ${campaignTitle}`.slice(0, 200);
   const body: Record<string, unknown> = {
     transaction_amount: amount,
     token,
-    description: input.description.slice(0, 200),
+    description,
     installments,
     payment_method_id: paymentMethodId,
     payer: {
-      email: technicalPayerEmail(input.buyerPhone),
+      email: technicalPayerEmail(input.buyerPhone, productKind),
     },
     external_reference: mercadoPagoExternalReference(
       productKind,
@@ -276,8 +301,11 @@ export async function createCardPayment(input: {
     ),
     notification_url:
       input.notificationUrl?.trim() ||
-      `${siteUrl()}/api/vaquinhas/webhook`,
-    statement_descriptor: "RECANTO",
+      (productKind === "rifa"
+        ? `${siteUrl()}/api/rifas/webhook`
+        : `${siteUrl()}/api/vaquinhas/webhook`),
+    statement_descriptor:
+      productKind === "vaquinha" ? "VAQUINHA" : "RIFA",
     metadata: {
       product: productKind,
       order_id: input.orderId,
@@ -289,7 +317,7 @@ export async function createCardPayment(input: {
         {
           id: input.campaignId || input.orderId,
           title: itemTitle,
-          description: input.description.slice(0, 200),
+          description,
           category_id: "donations",
           quantity: 1,
           unit_price: amount,
@@ -340,6 +368,28 @@ export async function createCardPayment(input: {
 
 export function mercadopagoPublicKey(): string {
   return process.env.NEXT_PUBLIC_MERCADOPAGO_PUBLIC_KEY?.trim() || "";
+}
+
+export function formatCardRejectionMessage(statusDetail: string): string {
+  const detail = statusDetail.trim();
+  const known: Record<string, string> = {
+    cc_rejected_bad_filled_card_number: "Número do cartão inválido.",
+    cc_rejected_bad_filled_date: "Data de validade inválida.",
+    cc_rejected_bad_filled_security_code: "Código de segurança inválido.",
+    cc_rejected_bad_filled_other: "Dados do cartão inválidos.",
+    cc_rejected_insufficient_amount: "Cartão sem limite suficiente.",
+    cc_rejected_high_risk: "Pagamento recusado por segurança.",
+    cc_rejected_blacklist: "Pagamento recusado pelo emissor.",
+    cc_rejected_call_for_authorize: "Autorize no banco e tente de novo.",
+    cc_rejected_card_disabled: "Cartão desabilitado. Contate o banco.",
+    cc_rejected_duplicated_payment: "Pagamento duplicado.",
+    cc_rejected_invalid_installments: "Parcelamento não permitido neste cartão.",
+    cc_rejected_max_attempts: "Muitas tentativas. Tente outro cartão.",
+    cc_rejected_other_reason: "Pagamento recusado pelo emissor.",
+  };
+  if (detail && known[detail]) return known[detail];
+  if (detail) return `Pagamento recusado (${detail}).`;
+  return "Pagamento recusado. Tente outro cartão ou use Pix.";
 }
 
 export async function fetchMercadoPagoPayment(
