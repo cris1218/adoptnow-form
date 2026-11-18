@@ -1,10 +1,12 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import { useEffect, useMemo, useState, useTransition } from "react";
 
 import {
   createVaquinhaDonation,
   getVaquinhaOrderPaymentStatus,
+  payVaquinhaWithCard,
 } from "@/app/vaquinha/actions";
 import { SiteAlert, type SiteAlertState } from "@/components/SiteAlert";
 import {
@@ -23,6 +25,24 @@ import {
   type DonationOrder,
   type PublicVaquinha,
 } from "@/lib/vaquinhas";
+
+/** Cartão fica oculto até ter Public Key / liberar uso. */
+const SHOW_CARD_PAYMENT = false;
+
+const VaquinhaCardBrick = dynamic(
+  () =>
+    import("@/components/VaquinhaCardBrick").then(
+      (mod) => mod.VaquinhaCardBrick
+    ),
+  {
+    ssr: false,
+    loading: () => (
+      <p className="text-sm text-stone-500">Carregando cartão...</p>
+    ),
+  }
+);
+
+type PayMethod = "pix" | "credit_card";
 
 function formatEndsAt(raw: string | null): string | null {
   if (!raw) return null;
@@ -56,6 +76,14 @@ function formatCountdown(remainingMs: number): string {
   return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
 }
 
+function parseAmountToCents(raw: string): number | null {
+  const cleaned = raw.trim().replace(/\s/g, "").replace(",", ".");
+  if (!cleaned) return null;
+  const value = Number(cleaned);
+  if (!Number.isFinite(value) || value <= 0) return null;
+  return Math.round(value * 100);
+}
+
 export function VaquinhaClient({
   token,
   initialVaquinha,
@@ -65,6 +93,7 @@ export function VaquinhaClient({
 }) {
   const [vaquinha, setVaquinha] = useState(initialVaquinha);
   const [amountText, setAmountText] = useState("");
+  const [payMethod, setPayMethod] = useState<PayMethod>("pix");
   const [isAnonymous, setIsAnonymous] = useState(false);
   const [donorName, setDonorName] = useState("");
   const [donorPhone, setDonorPhone] = useState("");
@@ -72,6 +101,13 @@ export function VaquinhaClient({
   const [phoneTouched, setPhoneTouched] = useState(false);
   const [activeOrder, setActiveOrder] = useState<DonationOrder | null>(null);
   const [paymentConfirmed, setPaymentConfirmed] = useState(false);
+  const [cardModalOpen, setCardModalOpen] = useState(false);
+  const [cardProcessing, setCardProcessing] = useState(false);
+  const [cardWaiting, setCardWaiting] = useState(false);
+  const [cardRejectMessage, setCardRejectMessage] = useState<string | null>(
+    null
+  );
+  const [cardBrickKey, setCardBrickKey] = useState(0);
   const [alert, setAlert] = useState<SiteAlertState>(null);
   const [pending, startTransition] = useTransition();
   const [nowMs, setNowMs] = useState(() => Date.now());
@@ -84,21 +120,25 @@ export function VaquinhaClient({
     () => formatEndsAt(vaquinha.endsAt),
     [vaquinha.endsAt]
   );
+  const amountCents = parseAmountToCents(amountText);
 
   const nameError = !isAnonymous ? fullNameError(donorName) : null;
   const phoneErr = !isAnonymous ? phoneError(donorPhone) : null;
 
   const expiresMs = parseExpiresAtMs(activeOrder?.expiresAt ?? null);
   const remainingMs =
-    activeOrder?.status === "awaiting_payment" && expiresMs != null
+    activeOrder?.status === "awaiting_payment" &&
+    activeOrder.paymentMethod === "pix" &&
+    expiresMs != null
       ? expiresMs - nowMs
       : null;
 
   useEffect(() => {
     if (activeOrder?.status !== "awaiting_payment") return;
+    if (activeOrder.paymentMethod !== "pix") return;
     const timer = window.setInterval(() => setNowMs(Date.now()), 1000);
     return () => window.clearInterval(timer);
-  }, [activeOrder?.status]);
+  }, [activeOrder?.status, activeOrder?.paymentMethod]);
 
   useEffect(() => {
     if (!activeOrder || activeOrder.status !== "awaiting_payment") return;
@@ -114,6 +154,8 @@ export function VaquinhaClient({
       if (result.vaquinha) setVaquinha(result.vaquinha);
       if (result.order.status === "paid") {
         setPaymentConfirmed(true);
+        setCardWaiting(false);
+        setCardModalOpen(false);
         setAlert({
           title: "Doação confirmada",
           message: "Obrigado pelo apoio!",
@@ -139,7 +181,16 @@ export function VaquinhaClient({
     setAlert({ title, message, tone });
   }
 
-  function handleDonate() {
+  function validateDonor(): boolean {
+    if (!isAnonymous) {
+      setNameTouched(true);
+      setPhoneTouched(true);
+      if (nameError || phoneErr) return false;
+    }
+    return true;
+  }
+
+  function handleDonatePix() {
     if (!vaquinha.acceptsDonations) {
       showAlert(
         "Vaquinha encerrada",
@@ -148,12 +199,7 @@ export function VaquinhaClient({
       );
       return;
     }
-
-    if (!isAnonymous) {
-      setNameTouched(true);
-      setPhoneTouched(true);
-      if (nameError || phoneErr) return;
-    }
+    if (!validateDonor()) return;
 
     startTransition(async () => {
       const result = await createVaquinhaDonation({
@@ -181,6 +227,84 @@ export function VaquinhaClient({
     });
   }
 
+  function openCardModal() {
+    if (!vaquinha.acceptsDonations) {
+      showAlert(
+        "Vaquinha encerrada",
+        "Esta campanha não está aceitando doações.",
+        "error"
+      );
+      return;
+    }
+    if (!validateDonor()) return;
+    if (amountCents == null || amountCents < 500) {
+      showAlert("Valor", "Informe um valor de pelo menos R$ 5,00.", "error");
+      return;
+    }
+    setCardRejectMessage(null);
+    setCardWaiting(false);
+    setCardProcessing(false);
+    setCardBrickKey((current) => current + 1);
+    setCardModalOpen(true);
+  }
+
+  function closeCardModal() {
+    if (cardProcessing || cardWaiting) return;
+    setCardModalOpen(false);
+    setCardRejectMessage(null);
+  }
+
+  async function handleDonateCard(data: {
+    cardToken: string;
+    paymentMethodId: string;
+    issuerId?: string | number | null;
+    installments: number;
+  }) {
+    setCardRejectMessage(null);
+    setCardProcessing(true);
+    try {
+      const result = await payVaquinhaWithCard({
+        token,
+        amountText,
+        isAnonymous,
+        donorName,
+        donorPhone,
+        cardToken: data.cardToken,
+        paymentMethodId: data.paymentMethodId,
+        issuerId: data.issuerId,
+        installments: data.installments,
+      });
+
+      if (!result.ok || !result.order) {
+        setCardRejectMessage(
+          result.message || "Pagamento recusado. Tente outro cartão."
+        );
+        setCardBrickKey((current) => current + 1);
+        throw new Error(result.message || "Pagamento recusado");
+      }
+
+      setActiveOrder(result.order);
+
+      if (result.order.status === "paid") {
+        setPaymentConfirmed(true);
+        setCardModalOpen(false);
+        setCardWaiting(false);
+        const refreshed = await getVaquinhaOrderPaymentStatus({
+          token,
+          orderId: result.order.id,
+        });
+        if (refreshed.vaquinha) setVaquinha(refreshed.vaquinha);
+        showAlert("Doação confirmada", "Obrigado pelo apoio!", "success");
+        return;
+      }
+
+      setCardWaiting(true);
+      setPaymentConfirmed(false);
+    } finally {
+      setCardProcessing(false);
+    }
+  }
+
   async function copyPix() {
     if (!activeOrder?.pixCopyPaste) return;
     try {
@@ -194,6 +318,7 @@ export function VaquinhaClient({
   const showPix =
     Boolean(activeOrder) &&
     activeOrder?.status === "awaiting_payment" &&
+    activeOrder.paymentMethod === "pix" &&
     Boolean(activeOrder.pixCopyPaste || activeOrder.pixTicketUrl);
 
   const qrSrc = activeOrder?.pixQrBase64
@@ -201,6 +326,9 @@ export function VaquinhaClient({
     : activeOrder?.pixCopyPaste
       ? pixQrImageUrl(activeOrder.pixCopyPaste)
       : null;
+
+  const showDonateForm =
+    vaquinha.acceptsDonations && !showPix && !paymentConfirmed;
 
   return (
     <div className="flex flex-col gap-5">
@@ -303,7 +431,7 @@ export function VaquinhaClient({
         </div>
       ) : null}
 
-      {vaquinha.acceptsDonations && !showPix ? (
+      {showDonateForm ? (
         <div className="rounded-[1.75rem] border border-white/70 bg-white/90 p-5 shadow-[0_18px_50px_rgba(14,90,88,0.12)]">
           <h2 className="text-lg font-semibold text-stone-900">Doar</h2>
           <p className="mt-1 text-sm text-stone-600">
@@ -320,6 +448,33 @@ export function VaquinhaClient({
               placeholder="20,00"
             />
           </label>
+
+          {SHOW_CARD_PAYMENT ? (
+            <div className="mt-4 grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => setPayMethod("pix")}
+                className={`rounded-xl border px-3 py-3 text-sm font-semibold ${
+                  payMethod === "pix"
+                    ? "border-brand-dark bg-brand-dark text-white"
+                    : "border-stone-300 bg-white text-stone-800"
+                }`}
+              >
+                Pix
+              </button>
+              <button
+                type="button"
+                onClick={() => setPayMethod("credit_card")}
+                className={`rounded-xl border px-3 py-3 text-sm font-semibold ${
+                  payMethod === "credit_card"
+                    ? "border-brand-dark bg-brand-dark text-white"
+                    : "border-stone-300 bg-white text-stone-800"
+                }`}
+              >
+                Cartão
+              </button>
+            </div>
+          ) : null}
 
           <label className="mt-4 flex cursor-pointer items-center gap-3 rounded-xl border border-stone-200 bg-stone-50 px-3 py-3">
             <input
@@ -368,14 +523,25 @@ export function VaquinhaClient({
             </div>
           ) : null}
 
-          <button
-            type="button"
-            disabled={pending || amountText.trim().length === 0}
-            onClick={handleDonate}
-            className="mt-5 flex h-12 w-full cursor-pointer items-center justify-center rounded-2xl bg-brand-dark text-base font-semibold text-white shadow-sm transition hover:bg-brand-950 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-dark/40 focus-visible:ring-offset-2 active:scale-[0.99] disabled:cursor-not-allowed disabled:bg-stone-200 disabled:text-stone-500 disabled:opacity-60 disabled:shadow-none"
-          >
-            {pending ? "Gerando Pix..." : "Doar com Pix"}
-          </button>
+          {SHOW_CARD_PAYMENT && payMethod === "credit_card" ? (
+            <button
+              type="button"
+              disabled={amountText.trim().length === 0}
+              onClick={openCardModal}
+              className="mt-5 flex h-12 w-full cursor-pointer items-center justify-center rounded-2xl bg-brand-dark text-base font-semibold text-white shadow-sm transition hover:bg-brand-950 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-dark/40 focus-visible:ring-offset-2 active:scale-[0.99] disabled:cursor-not-allowed disabled:bg-stone-200 disabled:text-stone-500 disabled:opacity-60 disabled:shadow-none"
+            >
+              Pagar com cartão
+            </button>
+          ) : (
+            <button
+              type="button"
+              disabled={pending || amountText.trim().length === 0}
+              onClick={handleDonatePix}
+              className="mt-5 flex h-12 w-full cursor-pointer items-center justify-center rounded-2xl bg-brand-dark text-base font-semibold text-white shadow-sm transition hover:bg-brand-950 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-dark/40 focus-visible:ring-offset-2 active:scale-[0.99] disabled:cursor-not-allowed disabled:bg-stone-200 disabled:text-stone-500 disabled:opacity-60 disabled:shadow-none"
+            >
+              {pending ? "Gerando Pix..." : "Doar com Pix"}
+            </button>
+          )}
         </div>
       ) : null}
 
@@ -384,6 +550,90 @@ export function VaquinhaClient({
           <p className="text-sm font-semibold text-amber-950">
             Esta vaquinha não está aceitando doações no momento.
           </p>
+        </div>
+      ) : null}
+
+      {SHOW_CARD_PAYMENT &&
+      cardModalOpen &&
+      amountCents != null &&
+      amountCents >= 500 ? (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-brand-950/45"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="vaquinha-card-title"
+        >
+          <div className="mx-auto w-full max-w-lg px-5 compact:px-2.5">
+            <div
+              className="flex max-h-[85dvh] w-full flex-col overflow-hidden rounded-[1.75rem] border border-white/70 bg-brand-bg shadow-[0_24px_60px_rgba(14,90,88,0.28)]"
+              onClick={(event) => event.stopPropagation()}
+            >
+              <div className="flex items-start justify-between gap-3 bg-brand-dark px-5 py-4 text-white">
+                <div className="min-w-0">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-white/75">
+                    Cartão
+                  </p>
+                  <h2
+                    id="vaquinha-card-title"
+                    className="mt-1 text-xl font-bold tracking-tight"
+                  >
+                    Pagar doação
+                  </h2>
+                  <p className="mt-1 text-sm text-white/85">
+                    {formatCentsBrl(amountCents)}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  aria-label="Fechar"
+                  disabled={cardProcessing || cardWaiting}
+                  className="flex h-9 w-9 shrink-0 cursor-pointer items-center justify-center rounded-xl bg-white/15 text-xl leading-none transition hover:bg-white/25 disabled:cursor-not-allowed disabled:opacity-50"
+                  onClick={closeCardModal}
+                >
+                  ×
+                </button>
+              </div>
+
+              <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
+                {cardWaiting ? (
+                  <div className="rounded-2xl border border-sky-200 bg-sky-50 px-4 py-4">
+                    <p className="text-sm font-semibold text-sky-950">
+                      Aguardando confirmação do pagamento...
+                    </p>
+                    <p className="mt-1 text-sm text-sky-800">
+                      A modal fecha automaticamente quando o pagamento for
+                      aprovado.
+                    </p>
+                  </div>
+                ) : (
+                  <>
+                    {cardRejectMessage ? (
+                      <div className="mb-4 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3">
+                        <p className="text-sm font-semibold text-rose-900">
+                          Pagamento recusado
+                        </p>
+                        <p className="mt-1 text-sm text-rose-800">
+                          {cardRejectMessage}
+                        </p>
+                      </div>
+                    ) : null}
+                    <VaquinhaCardBrick
+                      amountCents={amountCents}
+                      brickKey={`card-${cardBrickKey}`}
+                      disabled={cardProcessing}
+                      onPay={handleDonateCard}
+                      onError={(message) => setCardRejectMessage(message)}
+                    />
+                    {cardProcessing ? (
+                      <p className="mt-3 text-sm font-medium text-brand-dark">
+                        Processando cartão...
+                      </p>
+                    ) : null}
+                  </>
+                )}
+              </div>
+            </div>
+          </div>
         </div>
       ) : null}
 

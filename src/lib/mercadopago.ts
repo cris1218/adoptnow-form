@@ -162,6 +162,100 @@ export async function createPixPayment(input: {
   throw new Error(result.message);
 }
 
+export type MercadoPagoCardPayment = {
+  id: string;
+  status: string;
+  statusDetail: string;
+  transactionAmount: number;
+  externalReference: string;
+};
+
+export async function createCardPayment(input: {
+  orderId: string;
+  amountCents: number;
+  description: string;
+  token: string;
+  paymentMethodId: string;
+  installments?: number;
+  issuerId?: string | number | null;
+  buyerPhone: string;
+  notificationUrl?: string;
+}): Promise<MercadoPagoCardPayment> {
+  const amount = Number((input.amountCents / 100).toFixed(2));
+  if (!(amount >= 0.01)) {
+    throw new Error("Valor do cartão inválido.");
+  }
+  const token = input.token.trim();
+  const paymentMethodId = input.paymentMethodId.trim();
+  if (!token || !paymentMethodId) {
+    throw new Error("Dados do cartão incompletos.");
+  }
+
+  // Parcela mínima R$ 100: 2x só a partir de R$ 200, etc.
+  const maxInstallments = Math.max(1, Math.floor(input.amountCents / 10_000));
+  const installments = Math.max(
+    1,
+    Math.min(input.installments ?? 1, maxInstallments)
+  );
+  const body: Record<string, unknown> = {
+    transaction_amount: amount,
+    token,
+    description: input.description.slice(0, 200),
+    installments,
+    payment_method_id: paymentMethodId,
+    payer: {
+      email: technicalPayerEmail(input.buyerPhone),
+    },
+    external_reference: input.orderId,
+    notification_url:
+      input.notificationUrl?.trim() ||
+      `${siteUrl()}/api/vaquinhas/webhook`,
+  };
+
+  const issuerId =
+    input.issuerId == null || input.issuerId === ""
+      ? null
+      : String(input.issuerId);
+  if (issuerId) {
+    body.issuer_id = Number.isFinite(Number(issuerId))
+      ? Number(issuerId)
+      : issuerId;
+  }
+
+  const response = await fetch(`${MP_API}/v1/payments`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${accessToken()}`,
+      "Content-Type": "application/json",
+      "X-Idempotency-Key": `${input.orderId}-card`,
+    },
+    body: JSON.stringify(body),
+  });
+
+  const payload = (await response.json()) as Record<string, unknown>;
+  if (!response.ok) {
+    console.error("mercadopago create card", response.status, payload);
+    throw new Error(mpErrorMessage(payload, response.status));
+  }
+
+  const id = String(payload.id ?? "").trim();
+  if (!id) {
+    throw new Error("Mercado Pago não retornou o pagamento.");
+  }
+
+  return {
+    id,
+    status: String(payload.status ?? ""),
+    statusDetail: String(payload.status_detail ?? ""),
+    transactionAmount: Number(payload.transaction_amount ?? 0),
+    externalReference: String(payload.external_reference ?? ""),
+  };
+}
+
+export function mercadopagoPublicKey(): string {
+  return process.env.NEXT_PUBLIC_MERCADOPAGO_PUBLIC_KEY?.trim() || "";
+}
+
 export async function fetchMercadoPagoPayment(
   paymentId: string
 ): Promise<{

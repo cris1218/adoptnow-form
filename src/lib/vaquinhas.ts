@@ -2,6 +2,8 @@ export type VaquinhaStatus = "open" | "closed";
 
 export type VaquinhaOrderStatus = "awaiting_payment" | "paid" | "expired";
 
+export type VaquinhaPaymentMethod = "pix" | "credit_card";
+
 export type PublicVaquinha = {
   id: string;
   title: string;
@@ -23,6 +25,7 @@ export type DonationOrder = {
   isAnonymous: boolean;
   donorName: string;
   donorPhone: string;
+  paymentMethod: VaquinhaPaymentMethod;
   pixCopyPaste: string;
   pixQrBase64: string;
   pixTicketUrl?: string;
@@ -30,6 +33,10 @@ export type DonationOrder = {
   paidAt: string | null;
   createdAt: string | null;
 };
+
+export function mapPaymentMethod(raw: unknown): VaquinhaPaymentMethod {
+  return raw === "credit_card" ? "credit_card" : "pix";
+}
 
 export function formatCentsBrl(cents: number): string {
   return (cents / 100).toLocaleString("pt-BR", {

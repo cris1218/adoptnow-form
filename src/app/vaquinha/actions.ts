@@ -1,19 +1,54 @@
 "use server";
 
-import { createPixPayment } from "@/lib/mercadopago";
+import {
+  createCardPayment,
+  createPixPayment,
+} from "@/lib/mercadopago";
 import {
   fullNameError,
   normalizeFullName,
   normalizePhone,
   phoneError,
 } from "@/lib/masks";
+import { notifyStaffVaquinhaPaid } from "@/lib/notifyStaff";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { getSupabaseServer } from "@/lib/supabase";
 import {
+  mapPaymentMethod,
   mapPublicVaquinha,
   type DonationOrder,
   type PublicVaquinha,
+  type VaquinhaPaymentMethod,
 } from "@/lib/vaquinhas";
+
+function vaquinhaWebhookUrl() {
+  return `${
+    process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, "") ||
+    "https://recantoronron.vercel.app"
+  }/api/vaquinhas/webhook`;
+}
+
+function formatCardRejectionMessage(statusDetail: string): string {
+  const detail = statusDetail.trim();
+  const known: Record<string, string> = {
+    cc_rejected_bad_filled_card_number: "Número do cartão inválido.",
+    cc_rejected_bad_filled_date: "Data de validade inválida.",
+    cc_rejected_bad_filled_security_code: "Código de segurança inválido.",
+    cc_rejected_bad_filled_other: "Dados do cartão inválidos.",
+    cc_rejected_insufficient_amount: "Cartão sem limite suficiente.",
+    cc_rejected_high_risk: "Pagamento recusado por segurança.",
+    cc_rejected_blacklist: "Pagamento recusado pelo emissor.",
+    cc_rejected_call_for_authorize: "Autorize no banco e tente de novo.",
+    cc_rejected_card_disabled: "Cartão desabilitado. Contate o banco.",
+    cc_rejected_duplicated_payment: "Pagamento duplicado.",
+    cc_rejected_invalid_installments: "Parcelamento não permitido neste cartão.",
+    cc_rejected_max_attempts: "Muitas tentativas. Tente outro cartão.",
+    cc_rejected_other_reason: "Pagamento recusado pelo emissor.",
+  };
+  if (detail && known[detail]) return known[detail];
+  if (detail) return `Pagamento recusado (${detail}).`;
+  return "Pagamento recusado. Tente outro cartão ou use Pix.";
+}
 
 function adminOrThrow() {
   const admin = getSupabaseAdmin();
@@ -139,6 +174,11 @@ export async function createVaquinhaDonation(input: {
       }
     };
 
+    await admin
+      .from("vaquinha_orders")
+      .update({ payment_method: "pix" satisfies VaquinhaPaymentMethod })
+      .eq("id", created.order_id);
+
     const title = String(created.title ?? "Vaquinha");
     let pix;
     try {
@@ -148,10 +188,7 @@ export async function createVaquinhaDonation(input: {
         description: `Doação · ${title}`,
         buyerPhone: phone,
         expirationMinutes: 30,
-        notificationUrl: `${
-          process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, "") ||
-          "https://recantoronron.vercel.app"
-        }/api/vaquinhas/webhook`,
+        notificationUrl: vaquinhaWebhookUrl(),
       });
     } catch (pixError) {
       await releaseOrder();
@@ -185,6 +222,7 @@ export async function createVaquinhaDonation(input: {
         isAnonymous: Boolean(created.is_anonymous),
         donorName: String(created.donor_name ?? ""),
         donorPhone: String(created.donor_phone ?? ""),
+        paymentMethod: "pix",
         pixCopyPaste: pix.qrCode,
         pixQrBase64: pix.qrCodeBase64,
         pixTicketUrl: pix.ticketUrl || undefined,
@@ -201,6 +239,223 @@ export async function createVaquinhaDonation(input: {
         error instanceof Error
           ? error.message
           : "Não foi possível gerar o Pix agora.",
+    };
+  }
+}
+
+export async function payVaquinhaWithCard(input: {
+  token: string;
+  amountText: string;
+  isAnonymous: boolean;
+  donorName: string;
+  donorPhone: string;
+  cardToken: string;
+  paymentMethodId: string;
+  issuerId?: string | number | null;
+  installments?: number;
+}): Promise<{
+  ok: boolean;
+  message?: string;
+  order?: DonationOrder;
+}> {
+  const amountCents = parseAmountToCents(input.amountText);
+  if (amountCents == null || amountCents < 500) {
+    return { ok: false, message: "O valor mínimo da doação é R$ 5,00." };
+  }
+
+  let name = "";
+  let phone = "";
+  if (!input.isAnonymous) {
+    name = normalizeFullName(input.donorName);
+    const nameError = fullNameError(name);
+    if (nameError) {
+      return { ok: false, message: nameError };
+    }
+    phone = normalizePhone(input.donorPhone);
+    const donorPhoneError = phoneError(phone);
+    if (donorPhoneError) {
+      return { ok: false, message: donorPhoneError };
+    }
+  }
+
+  try {
+    const admin = adminOrThrow();
+    const { data, error } = await admin.rpc("create_vaquinha_order", {
+      p_token: input.token.trim(),
+      p_amount_cents: amountCents,
+      p_is_anonymous: input.isAnonymous,
+      p_donor_name: name,
+      p_donor_phone: phone,
+    });
+
+    if (error) {
+      return {
+        ok: false,
+        message: error.message || "Não foi possível criar a doação.",
+      };
+    }
+
+    const created = data as {
+      ok?: boolean;
+      order_id?: string;
+      expires_at?: string;
+      is_anonymous?: boolean;
+      donor_name?: string;
+      donor_phone?: string;
+      title?: string;
+      vaquinha_id?: string;
+    } | null;
+
+    if (!created?.ok || !created.order_id) {
+      return { ok: false, message: "Não foi possível criar a doação." };
+    }
+
+    const releaseOrder = async () => {
+      try {
+        await admin
+          .from("vaquinha_orders")
+          .update({ expires_at: "1970-01-01T00:00:00" })
+          .eq("id", created.order_id)
+          .eq("status", "awaiting_payment");
+        await admin.rpc("release_expired_vaquinha_orders", {
+          p_vaquinha_id: null,
+        });
+      } catch (releaseError) {
+        console.error("release after card failure", releaseError);
+      }
+    };
+
+    await admin
+      .from("vaquinha_orders")
+      .update({ payment_method: "credit_card" satisfies VaquinhaPaymentMethod })
+      .eq("id", created.order_id);
+
+    const title = String(created.title ?? "Vaquinha");
+    let card;
+    try {
+      card = await createCardPayment({
+        orderId: created.order_id,
+        amountCents,
+        description: `Doação · ${title}`,
+        token: input.cardToken,
+        paymentMethodId: input.paymentMethodId,
+        installments: input.installments ?? 1,
+        issuerId: input.issuerId,
+        buyerPhone: phone,
+        notificationUrl: vaquinhaWebhookUrl(),
+      });
+    } catch (cardError) {
+      await releaseOrder();
+      return {
+        ok: false,
+        message:
+          cardError instanceof Error
+            ? cardError.message
+            : "Não foi possível cobrar o cartão.",
+      };
+    }
+
+    const rejected =
+      card.status === "rejected" ||
+      card.status === "cancelled" ||
+      card.status === "refunded";
+
+    if (rejected) {
+      await releaseOrder();
+      return {
+        ok: false,
+        message: formatCardRejectionMessage(card.statusDetail),
+      };
+    }
+
+    const { error: attachError } = await admin.rpc("attach_vaquinha_order_pix", {
+      p_order_id: created.order_id,
+      p_mp_payment_id: card.id,
+      p_pix_copy_paste: "",
+      p_pix_qr_base64: "",
+    });
+
+    if (attachError) {
+      console.error("attach_vaquinha_order_pix card", attachError);
+      await releaseOrder();
+      return {
+        ok: false,
+        message:
+          attachError.message ||
+          "Não foi possível registrar o pagamento. Tente de novo.",
+      };
+    }
+
+    let status: DonationOrder["status"] = "awaiting_payment";
+    let paidAt: string | null = null;
+
+    if (card.status === "approved") {
+      const { data: markData, error: markError } = await admin.rpc(
+        "mark_vaquinha_order_paid",
+        {
+          p_order_id: created.order_id,
+          p_mp_payment_id: card.id,
+          p_amount_cents: amountCents,
+        }
+      );
+      if (markError) {
+        console.error("mark_vaquinha_order_paid card", markError);
+      } else {
+        const markResult = markData as {
+          ok?: boolean;
+          status?: string;
+          duplicate?: boolean;
+        } | null;
+        if (markResult?.ok && markResult.status === "paid") {
+          status = "paid";
+          paidAt = new Date().toISOString();
+          if (!markResult.duplicate) {
+            try {
+              await notifyStaffVaquinhaPaid({
+                vaquinhaId: String(created.vaquinha_id ?? ""),
+                orderId: created.order_id,
+                vaquinhaTitle: title,
+                isAnonymous: Boolean(created.is_anonymous),
+                donorName: String(created.donor_name ?? ""),
+                amountCents,
+              });
+            } catch (notifyError) {
+              console.error("notifyStaffVaquinhaPaid card", notifyError);
+            }
+          }
+        }
+      }
+    }
+
+    return {
+      ok: true,
+      order: {
+        id: created.order_id,
+        status,
+        amountCents,
+        isAnonymous: Boolean(created.is_anonymous),
+        donorName: String(created.donor_name ?? ""),
+        donorPhone: String(created.donor_phone ?? ""),
+        paymentMethod: "credit_card",
+        pixCopyPaste: "",
+        pixQrBase64: "",
+        expiresAt: created.expires_at ?? null,
+        paidAt,
+        createdAt: null,
+      },
+      message:
+        status === "paid"
+          ? undefined
+          : "Pagamento em análise. Aguarde a confirmação.",
+    };
+  } catch (error) {
+    console.error("payVaquinhaWithCard", error);
+    return {
+      ok: false,
+      message:
+        error instanceof Error
+          ? error.message
+          : "Não foi possível processar o cartão.",
     };
   }
 }
@@ -224,7 +479,7 @@ export async function getVaquinhaOrderPaymentStatus(input: {
     const { data: orderRow, error } = await admin
       .from("vaquinha_orders")
       .select(
-        "id, vaquinha_id, amount_cents, is_anonymous, donor_name, donor_phone, status, expires_at, paid_at, created_at, pix_copy_paste, pix_qr_base64"
+        "id, vaquinha_id, amount_cents, is_anonymous, donor_name, donor_phone, payment_method, status, expires_at, paid_at, created_at, pix_copy_paste, pix_qr_base64"
       )
       .eq("id", input.orderId)
       .maybeSingle();
@@ -255,6 +510,7 @@ export async function getVaquinhaOrderPaymentStatus(input: {
       isAnonymous: Boolean(orderRow.is_anonymous),
       donorName: String(orderRow.donor_name ?? ""),
       donorPhone: String(orderRow.donor_phone ?? ""),
+      paymentMethod: mapPaymentMethod(orderRow.payment_method),
       pixCopyPaste: String(orderRow.pix_copy_paste ?? ""),
       pixQrBase64: String(orderRow.pix_qr_base64 ?? ""),
       expiresAt:
