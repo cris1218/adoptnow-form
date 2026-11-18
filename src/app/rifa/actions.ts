@@ -167,7 +167,9 @@ export async function purchaseRaffleNumbers(input: {
       pix = await createPixPayment({
         orderId: reserved.order_id,
         amountCents: totalCents,
-        description: `${title} · números ${(reserved.numbers ?? input.numbers).join(",")}`,
+        description: `Rifa · ${title} · números ${(reserved.numbers ?? input.numbers).join(",")}`,
+        productKind: "rifa",
+        campaignTitle: title,
         buyerPhone: phone,
         expirationMinutes: 30,
       });

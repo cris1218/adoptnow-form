@@ -2,6 +2,8 @@ import { technicalPayerEmail } from "@/lib/raffles";
 
 const MP_API = "https://api.mercadopago.com";
 
+export type MercadoPagoProductKind = "vaquinha" | "rifa";
+
 export type MercadoPagoPixPayment = {
   id: string;
   status: string;
@@ -11,6 +13,23 @@ export type MercadoPagoPixPayment = {
   qrCodeBase64: string;
   ticketUrl: string;
 };
+
+/** Prefixo no external_reference para filtrar no painel do MP. */
+export function mercadoPagoExternalReference(
+  kind: MercadoPagoProductKind,
+  orderId: string
+): string {
+  const id = orderId.trim();
+  return kind === "vaquinha" ? `vaq:${id}` : `rifa:${id}`;
+}
+
+/** Aceita referência nova (vaq:/rifa:) e UUID legado. */
+export function parseMercadoPagoOrderId(externalReference: string): string {
+  const raw = externalReference.trim();
+  if (raw.startsWith("vaq:")) return raw.slice(4).trim();
+  if (raw.startsWith("rifa:")) return raw.slice(5).trim();
+  return raw;
+}
 
 /** MP Pix exige expiração entre 30 min e 30 dias. */
 const MP_PIX_MIN_EXPIRATION_MINUTES = 30;
@@ -60,10 +79,18 @@ async function postPixPayment(input: {
   expirationMinutes: number;
   idempotencyKey: string;
   notificationUrl: string;
+  productKind: MercadoPagoProductKind;
+  campaignId?: string;
+  campaignTitle?: string;
 }): Promise<{ ok: true; payment: MercadoPagoPixPayment } | { ok: false; message: string }> {
   const expires = new Date(
     Date.now() + input.expirationMinutes * 60_000
   ).toISOString();
+  const campaignTitle = (input.campaignTitle ?? "").trim() || input.description;
+  const itemTitle =
+    input.productKind === "vaquinha"
+      ? `Vaquinha · ${campaignTitle}`.slice(0, 200)
+      : `Rifa · ${campaignTitle}`.slice(0, 200);
   const response = await fetch(`${MP_API}/v1/payments`, {
     method: "POST",
     headers: {
@@ -79,8 +106,29 @@ async function postPixPayment(input: {
       payer: {
         email: technicalPayerEmail(input.buyerPhone),
       },
-      external_reference: input.orderId,
+      external_reference: mercadoPagoExternalReference(
+        input.productKind,
+        input.orderId
+      ),
       notification_url: input.notificationUrl,
+      metadata: {
+        product: input.productKind,
+        order_id: input.orderId,
+        campaign_id: input.campaignId ?? "",
+        campaign_title: campaignTitle.slice(0, 120),
+      },
+      additional_info: {
+        items: [
+          {
+            id: input.campaignId || input.orderId,
+            title: itemTitle,
+            description: input.description.slice(0, 200),
+            category_id: "donations",
+            quantity: 1,
+            unit_price: input.amount,
+          },
+        ],
+      },
     }),
   });
 
@@ -129,6 +177,9 @@ export async function createPixPayment(input: {
   amountCents: number;
   description: string;
   buyerPhone: string;
+  productKind: MercadoPagoProductKind;
+  campaignId?: string;
+  campaignTitle?: string;
   /**
    * Expiração no MP (mín. 30 min). A reserva no site/DB continua em 5 min.
    */
@@ -154,9 +205,12 @@ export async function createPixPayment(input: {
     description: input.description,
     buyerPhone: input.buyerPhone,
     expirationMinutes: minutes,
-    idempotencyKey: input.orderId,
+    idempotencyKey: `${input.productKind}:${input.orderId}`,
     notificationUrl:
       input.notificationUrl?.trim() || `${siteUrl()}/api/rifas/webhook`,
+    productKind: input.productKind,
+    campaignId: input.campaignId,
+    campaignTitle: input.campaignTitle,
   });
   if (result.ok) return result.payment;
   throw new Error(result.message);
@@ -180,6 +234,9 @@ export async function createCardPayment(input: {
   issuerId?: string | number | null;
   buyerPhone: string;
   notificationUrl?: string;
+  productKind?: MercadoPagoProductKind;
+  campaignId?: string;
+  campaignTitle?: string;
 }): Promise<MercadoPagoCardPayment> {
   const amount = Number((input.amountCents / 100).toFixed(2));
   if (!(amount >= 0.01)) {
@@ -197,6 +254,13 @@ export async function createCardPayment(input: {
     1,
     Math.min(input.installments ?? 1, maxInstallments)
   );
+  const productKind = input.productKind ?? "vaquinha";
+  const campaignTitle =
+    (input.campaignTitle ?? "").trim() || input.description.slice(0, 120);
+  const itemTitle =
+    productKind === "vaquinha"
+      ? `Vaquinha · ${campaignTitle}`.slice(0, 200)
+      : `Rifa · ${campaignTitle}`.slice(0, 200);
   const body: Record<string, unknown> = {
     transaction_amount: amount,
     token,
@@ -206,10 +270,32 @@ export async function createCardPayment(input: {
     payer: {
       email: technicalPayerEmail(input.buyerPhone),
     },
-    external_reference: input.orderId,
+    external_reference: mercadoPagoExternalReference(
+      productKind,
+      input.orderId
+    ),
     notification_url:
       input.notificationUrl?.trim() ||
       `${siteUrl()}/api/vaquinhas/webhook`,
+    statement_descriptor: "RECANTO",
+    metadata: {
+      product: productKind,
+      order_id: input.orderId,
+      campaign_id: input.campaignId ?? "",
+      campaign_title: campaignTitle.slice(0, 120),
+    },
+    additional_info: {
+      items: [
+        {
+          id: input.campaignId || input.orderId,
+          title: itemTitle,
+          description: input.description.slice(0, 200),
+          category_id: "donations",
+          quantity: 1,
+          unit_price: amount,
+        },
+      ],
+    },
   };
 
   const issuerId =

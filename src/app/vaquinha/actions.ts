@@ -148,6 +148,7 @@ export async function createVaquinhaDonation(input: {
     const created = data as {
       ok?: boolean;
       order_id?: string;
+      vaquinha_id?: string;
       amount_cents?: number;
       expires_at?: string;
       is_anonymous?: boolean;
@@ -186,7 +187,10 @@ export async function createVaquinhaDonation(input: {
       pix = await createPixPayment({
         orderId: created.order_id,
         amountCents,
-        description: `Doação · ${title}`,
+        description: `Vaquinha · ${title}`,
+        productKind: "vaquinha",
+        campaignId: String(created.vaquinha_id ?? ""),
+        campaignTitle: title,
         buyerPhone: phone,
         expirationMinutes: 30,
         notificationUrl: vaquinhaWebhookUrl(),
@@ -339,7 +343,10 @@ export async function payVaquinhaWithCard(input: {
       card = await createCardPayment({
         orderId: created.order_id,
         amountCents: chargeCents,
-        description: `Doação · ${title}`,
+        description: `Vaquinha · ${title}`,
+        productKind: "vaquinha",
+        campaignId: String(created.vaquinha_id ?? ""),
+        campaignTitle: title,
         token: input.cardToken,
         paymentMethodId: input.paymentMethodId,
         installments: input.installments ?? 1,

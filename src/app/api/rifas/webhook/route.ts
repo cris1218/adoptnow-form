@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { isEvolutionConfigured, sendWhatsAppText } from "@/lib/evolution";
 import {
   fetchMercadoPagoPayment,
+  parseMercadoPagoOrderId,
   verifyMercadoPagoWebhookSignature,
 } from "@/lib/mercadopago";
 import { notifyStaffRafflePaid } from "@/lib/notifyStaff";
@@ -126,7 +127,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ ok: true, status: payment.status });
     }
 
-    const orderId = payment.externalReference.trim();
+    const orderId = parseMercadoPagoOrderId(payment.externalReference);
     if (!orderId) {
       return NextResponse.json({ ok: false, message: "Sem referência" }, { status: 400 });
     }
