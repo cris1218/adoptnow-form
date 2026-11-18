@@ -1,7 +1,13 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useEffect, useMemo, useState, useTransition } from "react";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useTransition,
+} from "react";
 
 import {
   createVaquinhaDonation,
@@ -82,6 +88,132 @@ function parseAmountToCents(raw: string): number | null {
   const value = Number(cleaned);
   if (!Number.isFinite(value) || value <= 0) return null;
   return Math.round(value * 100);
+}
+
+function VaquinhaPhotoCarousel({ urls }: { urls: string[] }) {
+  const [index, setIndex] = useState(0);
+  const [lightboxOpen, setLightboxOpen] = useState(false);
+  const dialogRef = useRef<HTMLDialogElement>(null);
+  const count = urls.length;
+  const currentUrl = urls[index] ?? urls[0] ?? "";
+
+  useEffect(() => {
+    setIndex(0);
+    setLightboxOpen(false);
+  }, [urls]);
+
+  useEffect(() => {
+    if (count < 2 || lightboxOpen) return;
+    const id = window.setInterval(() => {
+      setIndex((current) => (current + 1) % count);
+    }, 5000);
+    return () => window.clearInterval(id);
+  }, [count, urls, lightboxOpen]);
+
+  useEffect(() => {
+    const dialog = dialogRef.current;
+    if (!dialog) return;
+
+    function onClose() {
+      setLightboxOpen(false);
+      document.body.style.overflow = "";
+    }
+
+    dialog.addEventListener("close", onClose);
+    return () => {
+      dialog.removeEventListener("close", onClose);
+      document.body.style.overflow = "";
+    };
+  }, []);
+
+  useEffect(() => {
+    const dialog = dialogRef.current;
+    if (!dialog) return;
+    if (lightboxOpen) {
+      if (!dialog.open) dialog.showModal();
+      document.body.style.overflow = "hidden";
+      return;
+    }
+    if (dialog.open) dialog.close();
+  }, [lightboxOpen]);
+
+  if (count < 1) return null;
+
+  return (
+    <>
+      <div className="relative overflow-hidden rounded-[1.75rem] border border-white/70 bg-stone-100 shadow-[0_18px_50px_rgba(14,90,88,0.12)]">
+        <button
+          type="button"
+          aria-label="Ampliar foto"
+          className="relative aspect-[4/3] w-full cursor-zoom-in sm:aspect-[16/10]"
+          onClick={() => setLightboxOpen(true)}
+        >
+          {urls.map((url, i) => (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              key={url}
+              src={url}
+              alt=""
+              className={`absolute inset-0 h-full w-full object-cover transition-opacity duration-700 ease-out ${
+                i === index ? "opacity-100" : "opacity-0"
+              }`}
+            />
+          ))}
+        </button>
+        {count > 1 ? (
+          <div className="absolute inset-x-0 bottom-3 flex items-center justify-center gap-1.5">
+            {urls.map((url, i) => (
+              <button
+                key={url}
+                type="button"
+                aria-label={`Foto ${i + 1}`}
+                className={`h-2 rounded-full transition-all ${
+                  i === index
+                    ? "w-5 bg-white shadow"
+                    : "w-2 bg-white/60 hover:bg-white/90"
+                }`}
+                onClick={() => setIndex(i)}
+              />
+            ))}
+          </div>
+        ) : null}
+      </div>
+
+      <dialog
+        ref={dialogRef}
+        aria-label="Foto da vaquinha"
+        onClick={(event) => {
+          if (event.target === event.currentTarget) setLightboxOpen(false);
+        }}
+        onCancel={() => setLightboxOpen(false)}
+        className="fixed inset-0 z-50 m-0 h-dvh max-h-none w-screen max-w-none border-0 bg-black/85 p-0 open:flex"
+      >
+        <div
+          className="relative flex h-full w-full items-center justify-center px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-[max(4.5rem,calc(env(safe-area-inset-top)+3.5rem))]"
+          onClick={() => setLightboxOpen(false)}
+        >
+          <button
+            type="button"
+            onClick={(event) => {
+              event.stopPropagation();
+              setLightboxOpen(false);
+            }}
+            className="absolute right-4 top-[max(0.75rem,env(safe-area-inset-top))] flex h-11 w-11 items-center justify-center rounded-full bg-white text-xl font-bold leading-none text-stone-800 shadow-lg"
+            aria-label="Fechar foto"
+          >
+            ×
+          </button>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={currentUrl}
+            alt=""
+            className="max-h-full max-w-full object-contain"
+            onClick={(event) => event.stopPropagation()}
+          />
+        </div>
+      </dialog>
+    </>
+  );
 }
 
 export function VaquinhaClient({
@@ -332,13 +464,8 @@ export function VaquinhaClient({
 
   return (
     <div className="flex flex-col gap-5">
-      {vaquinha.photoUrls[0] ? (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img
-          src={vaquinha.photoUrls[0]}
-          alt={vaquinha.title}
-          className="h-52 w-full rounded-[1.75rem] object-cover shadow-[0_18px_50px_rgba(14,90,88,0.12)]"
-        />
+      {vaquinha.photoUrls.length > 0 ? (
+        <VaquinhaPhotoCarousel urls={vaquinha.photoUrls} />
       ) : null}
 
       <div className="rounded-[1.75rem] border border-white/70 bg-white/90 p-5 shadow-[0_18px_50px_rgba(14,90,88,0.12)]">
