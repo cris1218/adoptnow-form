@@ -32,8 +32,8 @@ import {
   type PublicVaquinha,
 } from "@/lib/vaquinhas";
 
-/** Cartão fica oculto até ter Public Key / liberar uso. */
-const SHOW_CARD_PAYMENT = false;
+/** Cartão liberado: Public Key + webhook secret já estão na Vercel. */
+const SHOW_CARD_PAYMENT = true;
 
 const VaquinhaCardBrick = dynamic(
   () =>
