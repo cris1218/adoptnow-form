@@ -154,7 +154,7 @@ function VaquinhaPhotoCarousel({ urls }: { urls: string[] }) {
               key={url}
               src={url}
               alt=""
-              className={`absolute inset-0 h-full w-full object-cover transition-opacity duration-700 ease-out ${
+              className={`absolute inset-0 h-full w-full object-contain transition-opacity duration-700 ease-out ${
                 i === index ? "opacity-100" : "opacity-0"
               }`}
             />
