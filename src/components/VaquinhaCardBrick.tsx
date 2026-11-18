@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { CardPayment, initMercadoPago } from "@mercadopago/sdk-react";
 
 type CardFormData = {
@@ -36,18 +36,104 @@ export function VaquinhaCardBrick({
   onError,
 }: Props) {
   const publicKey = process.env.NEXT_PUBLIC_MERCADOPAGO_PUBLIC_KEY?.trim() || "";
-  const [ready, setReady] = useState(false);
+  const [sdkReady, setSdkReady] = useState(false);
+  const [brickReady, setBrickReady] = useState(false);
+
   const amount = useMemo(
     () => Number((amountCents / 100).toFixed(2)),
     [amountCents]
   );
   const maxInstallments = maxCardInstallments(amountCents);
+  const containerId = useMemo(
+    () =>
+      `vaquinhaCardBrick_${String(brickKey ?? amountCents).replace(/\W+/g, "_")}`,
+    [brickKey, amountCents]
+  );
+
+  const onPayRef = useRef(onPay);
+  const onErrorRef = useRef(onError);
+  const disabledRef = useRef(disabled);
+  const maxInstallmentsRef = useRef(maxInstallments);
+
+  useEffect(() => {
+    onPayRef.current = onPay;
+  }, [onPay]);
+  useEffect(() => {
+    onErrorRef.current = onError;
+  }, [onError]);
+  useEffect(() => {
+    disabledRef.current = disabled;
+  }, [disabled]);
+  useEffect(() => {
+    maxInstallmentsRef.current = maxInstallments;
+  }, [maxInstallments]);
 
   useEffect(() => {
     if (!publicKey) return;
-    initMercadoPago(publicKey, { locale: "pt-BR" });
-    setReady(true);
+    try {
+      initMercadoPago(publicKey, { locale: "pt-BR" });
+      setSdkReady(true);
+    } catch (error) {
+      console.error("initMercadoPago", error);
+      onErrorRef.current?.(
+        error instanceof Error
+          ? error.message
+          : "Não foi possível iniciar o Mercado Pago."
+      );
+    }
   }, [publicKey]);
+
+  useEffect(() => {
+    setBrickReady(false);
+  }, [amountCents, brickKey, maxInstallments, containerId]);
+
+  // Callbacks estáveis: o Brick remonta se onReady/onSubmit/onError mudarem.
+  const handleReady = useCallback(() => {
+    setBrickReady(true);
+  }, []);
+
+  const handleError = useCallback((error: { message?: string } | string) => {
+    console.error("CardPayment brick", error);
+    const message =
+      (typeof error === "string" && error) ||
+      (error &&
+        typeof error === "object" &&
+        typeof error.message === "string" &&
+        error.message) ||
+      "Falha no formulário de cartão. Tente de novo.";
+    onErrorRef.current?.(message);
+  }, []);
+
+  const handleSubmit = useCallback(async (formData: CardFormData) => {
+    if (disabledRef.current) return;
+    const token = String(formData.token ?? "").trim();
+    const paymentMethodId = String(formData.payment_method_id ?? "").trim();
+    const max = maxInstallmentsRef.current;
+    const installments = Math.max(
+      1,
+      Math.min(Number(formData.installments) || 1, max)
+    );
+    if (!token || !paymentMethodId) {
+      onErrorRef.current?.("Não foi possível tokenizar o cartão.");
+      throw new Error("Dados do cartão incompletos.");
+    }
+    await onPayRef.current({
+      cardToken: token,
+      paymentMethodId,
+      issuerId: formData.issuer_id ?? null,
+      installments,
+    });
+  }, []);
+
+  const initialization = useMemo(() => ({ amount }), [amount]);
+  const customization = useMemo(
+    () => ({
+      paymentMethods: {
+        maxInstallments,
+      },
+    }),
+    [maxInstallments]
+  );
 
   if (!publicKey) {
     return (
@@ -57,7 +143,7 @@ export function VaquinhaCardBrick({
     );
   }
 
-  if (!ready || !(amount >= 5)) {
+  if (!sdkReady || !(amount >= 5)) {
     return (
       <p className="text-sm text-stone-500">
         Informe um valor de pelo menos R$ 5,00 para pagar com cartão.
@@ -67,45 +153,25 @@ export function VaquinhaCardBrick({
 
   return (
     <div
-      className={disabled ? "pointer-events-none opacity-60" : undefined}
+      className={`relative min-h-[28rem] ${
+        disabled ? "pointer-events-none opacity-60" : ""
+      }`}
       aria-disabled={disabled}
     >
+      {!brickReady ? (
+        <p className="mb-3 text-sm text-stone-500">
+          Carregando formulário do cartão...
+        </p>
+      ) : null}
       <CardPayment
-        key={brickKey ?? `card-brick-${amountCents}-${maxInstallments}`}
+        id={containerId}
+        key={`${containerId}-${amountCents}-${maxInstallments}`}
         locale="pt-BR"
-        initialization={{ amount }}
-        customization={{
-          paymentMethods: {
-            maxInstallments,
-          },
-        }}
-        onSubmit={async (formData: CardFormData) => {
-          if (disabled) return;
-          const token = String(formData.token ?? "").trim();
-          const paymentMethodId = String(
-            formData.payment_method_id ?? ""
-          ).trim();
-          const installments = Math.max(
-            1,
-            Math.min(Number(formData.installments) || 1, maxInstallments)
-          );
-          if (!token || !paymentMethodId) {
-            onError?.("Não foi possível tokenizar o cartão.");
-            throw new Error("Dados do cartão incompletos.");
-          }
-          await onPay({
-            cardToken: token,
-            paymentMethodId,
-            issuerId: formData.issuer_id ?? null,
-            installments,
-          });
-        }}
-        onError={(error) => {
-          console.error("CardPayment brick", error);
-          onError?.(
-            error?.message || "Falha no formulário de cartão. Tente de novo."
-          );
-        }}
+        initialization={initialization}
+        customization={customization}
+        onReady={handleReady}
+        onSubmit={handleSubmit}
+        onError={handleError}
       />
     </div>
   );

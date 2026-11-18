@@ -14,6 +14,7 @@ import { notifyStaffVaquinhaPaid } from "@/lib/notifyStaff";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { getSupabaseServer } from "@/lib/supabase";
 import {
+  cardChargeCentsFromDonation,
   mapPaymentMethod,
   mapPublicVaquinha,
   type DonationOrder,
@@ -331,11 +332,13 @@ export async function payVaquinhaWithCard(input: {
       .eq("id", created.order_id);
 
     const title = String(created.title ?? "Vaquinha");
+    // Pedido guarda a doação; cobramos doação + taxa MP no cartão.
+    const chargeCents = cardChargeCentsFromDonation(amountCents);
     let card;
     try {
       card = await createCardPayment({
         orderId: created.order_id,
-        amountCents,
+        amountCents: chargeCents,
         description: `Doação · ${title}`,
         token: input.cardToken,
         paymentMethodId: input.paymentMethodId,
@@ -395,7 +398,7 @@ export async function payVaquinhaWithCard(input: {
         {
           p_order_id: created.order_id,
           p_mp_payment_id: card.id,
-          p_amount_cents: amountCents,
+          p_amount_cents: chargeCents,
         }
       );
       if (markError) {

@@ -26,6 +26,8 @@ import {
   phoneError,
 } from "@/lib/masks";
 import {
+  cardChargeCentsFromDonation,
+  cardFeeCentsFromDonation,
   formatCentsBrl,
   vaquinhaProgressPercent,
   type DonationOrder,
@@ -253,6 +255,14 @@ export function VaquinhaClient({
     [vaquinha.endsAt]
   );
   const amountCents = parseAmountToCents(amountText);
+  const cardChargeCents =
+    amountCents != null && amountCents >= 500
+      ? cardChargeCentsFromDonation(amountCents)
+      : null;
+  const cardFeeCents =
+    amountCents != null && amountCents >= 500
+      ? cardFeeCentsFromDonation(amountCents)
+      : null;
 
   const nameError = !isAnonymous ? fullNameError(donorName) : null;
   const phoneErr = !isAnonymous ? phoneError(donorPhone) : null;
@@ -577,29 +587,41 @@ export function VaquinhaClient({
           </label>
 
           {SHOW_CARD_PAYMENT ? (
-            <div className="mt-4 grid grid-cols-2 gap-2">
-              <button
-                type="button"
-                onClick={() => setPayMethod("pix")}
-                className={`rounded-xl border px-3 py-3 text-sm font-semibold ${
-                  payMethod === "pix"
-                    ? "border-brand-dark bg-brand-dark text-white"
-                    : "border-stone-300 bg-white text-stone-800"
-                }`}
-              >
-                Pix
-              </button>
-              <button
-                type="button"
-                onClick={() => setPayMethod("credit_card")}
-                className={`rounded-xl border px-3 py-3 text-sm font-semibold ${
-                  payMethod === "credit_card"
-                    ? "border-brand-dark bg-brand-dark text-white"
-                    : "border-stone-300 bg-white text-stone-800"
-                }`}
-              >
-                Cartão
-              </button>
+            <div className="mt-4 space-y-2">
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => setPayMethod("pix")}
+                  className={`rounded-xl border px-3 py-3 text-sm font-semibold ${
+                    payMethod === "pix"
+                      ? "border-brand-dark bg-brand-dark text-white"
+                      : "border-stone-300 bg-white text-stone-800"
+                  }`}
+                >
+                  Pix
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPayMethod("credit_card")}
+                  className={`rounded-xl border px-3 py-3 text-sm font-semibold ${
+                    payMethod === "credit_card"
+                      ? "border-brand-dark bg-brand-dark text-white"
+                      : "border-stone-300 bg-white text-stone-800"
+                  }`}
+                >
+                  Cartão de crédito
+                </button>
+              </div>
+              {payMethod === "credit_card" &&
+              cardChargeCents != null &&
+              cardFeeCents != null ? (
+                <p className="text-xs text-stone-600">
+                  No cartão de crédito, a taxa do Mercado Pago (4,98%) fica no
+                  cobrado: {formatCentsBrl(cardChargeCents)} (doação{" "}
+                  {formatCentsBrl(amountCents!)} + taxa{" "}
+                  {formatCentsBrl(cardFeeCents)}).
+                </p>
+              ) : null}
             </div>
           ) : null}
 
@@ -657,7 +679,7 @@ export function VaquinhaClient({
               onClick={openCardModal}
               className="mt-5 flex h-12 w-full cursor-pointer items-center justify-center rounded-2xl bg-brand-dark text-base font-semibold text-white shadow-sm transition hover:bg-brand-950 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-dark/40 focus-visible:ring-offset-2 active:scale-[0.99] disabled:cursor-not-allowed disabled:bg-stone-200 disabled:text-stone-500 disabled:opacity-60 disabled:shadow-none"
             >
-              Pagar com cartão
+              Pagar com cartão de crédito
             </button>
           ) : (
             <button
@@ -692,13 +714,13 @@ export function VaquinhaClient({
         >
           <div className="mx-auto w-full max-w-lg px-5 compact:px-2.5">
             <div
-              className="flex max-h-[85dvh] w-full flex-col overflow-hidden rounded-[1.75rem] border border-white/70 bg-brand-bg shadow-[0_24px_60px_rgba(14,90,88,0.28)]"
+              className="flex max-h-[90dvh] w-full flex-col overflow-hidden rounded-[1.75rem] border border-white/70 bg-white shadow-[0_24px_60px_rgba(14,90,88,0.28)]"
               onClick={(event) => event.stopPropagation()}
             >
-              <div className="flex items-start justify-between gap-3 bg-brand-dark px-5 py-4 text-white">
+              <div className="flex shrink-0 items-start justify-between gap-3 bg-brand-dark px-5 py-4 text-white">
                 <div className="min-w-0">
                   <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-white/75">
-                    Cartão
+                    Cartão de crédito
                   </p>
                   <h2
                     id="vaquinha-card-title"
@@ -707,8 +729,14 @@ export function VaquinhaClient({
                     Pagar doação
                   </h2>
                   <p className="mt-1 text-sm text-white/85">
-                    {formatCentsBrl(amountCents)}
+                    Total {formatCentsBrl(cardChargeCents ?? amountCents)}
                   </p>
+                  {cardFeeCents != null && cardChargeCents != null ? (
+                    <p className="mt-0.5 text-xs text-white/70">
+                      Doação {formatCentsBrl(amountCents)} + taxa{" "}
+                      {formatCentsBrl(cardFeeCents)}
+                    </p>
+                  ) : null}
                 </div>
                 <button
                   type="button"
@@ -721,7 +749,7 @@ export function VaquinhaClient({
                 </button>
               </div>
 
-              <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
+              <div className="overflow-y-auto overscroll-contain px-4 py-4">
                 {cardWaiting ? (
                   <div className="rounded-2xl border border-sky-200 bg-sky-50 px-4 py-4">
                     <p className="text-sm font-semibold text-sky-950">
@@ -745,7 +773,7 @@ export function VaquinhaClient({
                       </div>
                     ) : null}
                     <VaquinhaCardBrick
-                      amountCents={amountCents}
+                      amountCents={cardChargeCents ?? amountCents}
                       brickKey={`card-${cardBrickKey}`}
                       disabled={cardProcessing}
                       onPay={handleDonateCard}
