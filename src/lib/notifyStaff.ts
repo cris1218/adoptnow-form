@@ -22,7 +22,14 @@ function isExpoPushToken(token: string): boolean {
 }
 
 function channelForType(type: string): string {
-  if (type === "raffle-paid" || type.startsWith("raffle-")) return "raffles";
+  if (
+    type === "raffle-paid" ||
+    type.startsWith("raffle-") ||
+    type === "vaquinha-paid" ||
+    type.startsWith("vaquinha-")
+  ) {
+    return "raffles";
+  }
   return "potential-adopters";
 }
 
@@ -214,6 +221,32 @@ export async function notifyStaffRafflePaid(input: {
       orderId: input.orderId,
       raffleTitle: title,
       buyerName: buyer,
+    },
+  });
+}
+
+export async function notifyStaffVaquinhaPaid(input: {
+  vaquinhaId: string;
+  orderId: string;
+  vaquinhaTitle: string;
+  isAnonymous: boolean;
+  donorName: string;
+  amountCents: number;
+}): Promise<number> {
+  const title = input.vaquinhaTitle.trim() || "Vaquinha";
+  const amount = formatCentsBrl(input.amountCents);
+  const body = input.isAnonymous
+    ? `Doação anônima de ${amount} na vaquinha "${title}".`
+    : `${input.donorName.trim() || "Alguém"} doou ${amount} na vaquinha "${title}".`;
+
+  return notifyStaff({
+    title: "Vaquinha — doação",
+    body,
+    data: {
+      type: "vaquinha-paid",
+      vaquinhaId: input.vaquinhaId,
+      orderId: input.orderId,
+      vaquinhaTitle: title,
     },
   });
 }

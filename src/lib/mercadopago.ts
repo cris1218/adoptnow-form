@@ -59,6 +59,7 @@ async function postPixPayment(input: {
   buyerPhone: string;
   expirationMinutes: number;
   idempotencyKey: string;
+  notificationUrl: string;
 }): Promise<{ ok: true; payment: MercadoPagoPixPayment } | { ok: false; message: string }> {
   const expires = new Date(
     Date.now() + input.expirationMinutes * 60_000
@@ -79,7 +80,7 @@ async function postPixPayment(input: {
         email: technicalPayerEmail(input.buyerPhone),
       },
       external_reference: input.orderId,
-      notification_url: `${siteUrl()}/api/rifas/webhook`,
+      notification_url: input.notificationUrl,
     }),
   });
 
@@ -132,6 +133,8 @@ export async function createPixPayment(input: {
    * Expiração no MP (mín. 30 min). A reserva no site/DB continua em 5 min.
    */
   expirationMinutes?: number;
+  /** Default: webhook das rifas. */
+  notificationUrl?: string;
 }): Promise<MercadoPagoPixPayment> {
   const amount = Number((input.amountCents / 100).toFixed(2));
   if (!(amount >= 0.01)) {
@@ -152,6 +155,8 @@ export async function createPixPayment(input: {
     buyerPhone: input.buyerPhone,
     expirationMinutes: minutes,
     idempotencyKey: input.orderId,
+    notificationUrl:
+      input.notificationUrl?.trim() || `${siteUrl()}/api/rifas/webhook`,
   });
   if (result.ok) return result.payment;
   throw new Error(result.message);
