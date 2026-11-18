@@ -480,6 +480,7 @@ export function RaffleClient({
     null
   );
   const [cardBrickKey, setCardBrickKey] = useState(0);
+  const [checkoutAttempted, setCheckoutAttempted] = useState(false);
   const [pending, startTransition] = useTransition();
   const pixSectionRef = useRef<HTMLDivElement>(null);
   const pixCopyPasteRef = useRef<HTMLTextAreaElement>(null);
@@ -717,22 +718,28 @@ export function RaffleClient({
     if (!buyerName && order.buyerName) setBuyerName(order.buyerName);
   }
 
-  function validateBuyer(): boolean {
+  const checkoutHints = useMemo(() => {
+    const hints: string[] = [];
+    if (selected.length === 0) hints.push("Falta escolher o número.");
+    if (buyerNameError) hints.push("Falta o nome completo.");
+    if (buyerPhoneError) hints.push("Falta o WhatsApp.");
+    return hints;
+  }, [selected.length, buyerNameError, buyerPhoneError]);
+
+  function markCheckoutAttempt() {
+    setCheckoutAttempted(true);
     setBuyerNameTouched(true);
     setBuyerPhoneTouched(true);
-    if (buyerNameError || buyerPhoneError) {
-      showAlert(
-        "Dados incompletos",
-        buyerNameError || buyerPhoneError || "Confira nome e WhatsApp.",
-        "error"
-      );
-      return false;
-    }
-    if (selected.length === 0) {
-      showAlert("Números", "Selecione ao menos um número.", "error");
-      return false;
-    }
-    return true;
+  }
+
+  function selectPayMethod(method: RafflePaymentMethod) {
+    setPayMethod(method);
+    markCheckoutAttempt();
+  }
+
+  function validateBuyer(): boolean {
+    markCheckoutAttempt();
+    return checkoutHints.length === 0;
   }
 
   function clearBuyerForm() {
@@ -741,6 +748,7 @@ export function RaffleClient({
     setBuyerPhone("");
     setBuyerNameTouched(false);
     setBuyerPhoneTouched(false);
+    setCheckoutAttempted(false);
   }
 
   function markNumbersLocal(
@@ -1131,7 +1139,7 @@ export function RaffleClient({
             <div className="grid grid-cols-2 gap-2">
               <button
                 type="button"
-                onClick={() => setPayMethod("pix")}
+                onClick={() => selectPayMethod("pix")}
                 className={`rounded-xl border px-3 py-3 text-sm font-semibold ${
                   payMethod === "pix"
                     ? "border-brand-dark bg-brand-dark text-white"
@@ -1142,7 +1150,7 @@ export function RaffleClient({
               </button>
               <button
                 type="button"
-                onClick={() => setPayMethod("credit_card")}
+                onClick={() => selectPayMethod("credit_card")}
                 className={`rounded-xl border px-3 py-3 text-sm font-semibold ${
                   payMethod === "credit_card"
                     ? "border-brand-dark bg-brand-dark text-white"
@@ -1152,6 +1160,18 @@ export function RaffleClient({
                 Cartão de crédito
               </button>
             </div>
+            {checkoutAttempted && checkoutHints.length > 0 ? (
+              <ul className="space-y-1 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2.5">
+                {checkoutHints.map((hint) => (
+                  <li
+                    key={hint}
+                    className="text-sm font-medium text-rose-900"
+                  >
+                    {hint}
+                  </li>
+                ))}
+              </ul>
+            ) : null}
             {payMethod === "credit_card" &&
             cardChargeCents != null &&
             cardFeeCents != null &&
@@ -1168,25 +1188,15 @@ export function RaffleClient({
           {payMethod === "credit_card" ? (
             <button
               type="button"
-              disabled={
-                selected.length === 0 ||
-                Boolean(buyerNameError) ||
-                Boolean(buyerPhoneError)
-              }
               onClick={openCardModal}
-              className="mt-4 flex h-14 w-full cursor-pointer items-center justify-center rounded-2xl bg-brand-dark text-lg font-semibold text-white shadow-sm transition hover:bg-brand-950 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-50"
+              className="mt-4 flex h-14 w-full cursor-pointer items-center justify-center rounded-2xl bg-brand-dark text-lg font-semibold text-white shadow-sm transition hover:bg-brand-950 active:scale-[0.99]"
             >
               Pagar com cartão de crédito
             </button>
           ) : (
             <button
               type="button"
-              disabled={
-                pending ||
-                selected.length === 0 ||
-                Boolean(buyerNameError) ||
-                Boolean(buyerPhoneError)
-              }
+              disabled={pending}
               onClick={handlePurchasePix}
               className="mt-4 flex h-14 w-full cursor-pointer items-center justify-center rounded-2xl bg-brand-dark text-lg font-semibold text-white shadow-sm transition hover:bg-brand-950 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-50"
             >
