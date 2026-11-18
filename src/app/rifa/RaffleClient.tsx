@@ -1188,17 +1188,18 @@ export function RaffleClient({
           {payMethod === "credit_card" ? (
             <button
               type="button"
+              disabled={checkoutHints.length > 0}
               onClick={openCardModal}
-              className="mt-4 flex h-14 w-full cursor-pointer items-center justify-center rounded-2xl bg-brand-dark text-lg font-semibold text-white shadow-sm transition hover:bg-brand-950 active:scale-[0.99]"
+              className="mt-4 flex h-14 w-full cursor-pointer items-center justify-center rounded-2xl bg-brand-dark text-lg font-semibold text-white shadow-sm transition hover:bg-brand-950 active:scale-[0.99] disabled:cursor-not-allowed disabled:bg-stone-200 disabled:text-stone-500 disabled:opacity-60 disabled:shadow-none"
             >
               Pagar com cartão de crédito
             </button>
           ) : (
             <button
               type="button"
-              disabled={pending}
+              disabled={pending || checkoutHints.length > 0}
               onClick={handlePurchasePix}
-              className="mt-4 flex h-14 w-full cursor-pointer items-center justify-center rounded-2xl bg-brand-dark text-lg font-semibold text-white shadow-sm transition hover:bg-brand-950 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-50"
+              className="mt-4 flex h-14 w-full cursor-pointer items-center justify-center rounded-2xl bg-brand-dark text-lg font-semibold text-white shadow-sm transition hover:bg-brand-950 active:scale-[0.99] disabled:cursor-not-allowed disabled:bg-stone-200 disabled:text-stone-500 disabled:opacity-60 disabled:shadow-none"
             >
               {pending ? "Preparando Pix..." : "Comprar com Pix"}
             </button>
