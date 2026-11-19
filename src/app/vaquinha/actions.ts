@@ -26,7 +26,7 @@ import {
 function vaquinhaWebhookUrl() {
   return `${
     process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, "") ||
-    "https://recantoronron.vercel.app"
+    "https://recantoronron.com.br"
   }/api/vaquinhas/webhook`;
 }
 

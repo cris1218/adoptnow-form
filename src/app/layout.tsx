@@ -3,7 +3,7 @@ import { Nunito } from "next/font/google";
 
 import "./globals.css";
 
-const siteUrl = "https://recantoronron.vercel.app";
+const siteUrl = "https://recantoronron.com.br";
 const siteTitle = "Quero adotar | Recanto do Ron Ron";
 const siteDescription =
   "Questionário de adoção responsável do Recanto do Ron Ron. Leia as regras, deixe seu nome e WhatsApp e a equipe entra em contato.";

@@ -334,7 +334,7 @@ function RafflePhotoCarousel({ urls }: { urls: string[] }) {
 
   return (
     <>
-      <div className="relative aspect-[4/3] w-full overflow-hidden rounded-[1.75rem] border border-white/70 bg-stone-100 shadow-[0_18px_50px_rgba(14,90,88,0.12)] sm:aspect-[16/10]">
+      <div className="relative aspect-[4/3] w-full overflow-hidden rounded-[1.75rem] border border-white/70 bg-stone-100 shadow-[0_18px_50px_rgba(14,90,88,0.12)] sm:aspect-[16/10] lg:aspect-[2/1]">
         <button
           type="button"
           aria-label="Ampliar foto"
@@ -882,16 +882,16 @@ export function RaffleClient({
 
   return (
     <div className="flex flex-col gap-5">
-      {raffle.photoUrls.length > 0 ? (
-        <RafflePhotoCarousel urls={raffle.photoUrls} />
-      ) : null}
-
       {raffle.status === "drawn" && displayWinners.length > 0 ? (
         <WinnersPodium winners={displayWinners} />
       ) : null}
 
-      <div className="rounded-[1.75rem] border border-white/70 bg-white/90 p-5 shadow-[0_18px_50px_rgba(14,90,88,0.12)]">
-        <h1 className="text-2xl font-bold tracking-tight text-stone-900">
+      {raffle.photoUrls.length > 0 ? (
+        <RafflePhotoCarousel urls={raffle.photoUrls} />
+      ) : null}
+
+      <div className="rounded-[1.75rem] border border-white/70 bg-white/90 p-5 shadow-[0_18px_50px_rgba(14,90,88,0.12)] lg:p-6">
+        <h1 className="text-2xl font-bold tracking-tight text-stone-900 lg:text-3xl">
           {raffle.title}
         </h1>
         {raffle.itemsDescription ? (
@@ -1067,7 +1067,7 @@ export function RaffleClient({
         <p className="mt-1 text-sm text-stone-500">
           Verde = comprado · Amarelo = reservado · Branco = livre
         </p>
-        <div className="mt-4 grid w-full grid-cols-5 gap-1.5 sm:grid-cols-8 sm:gap-2 md:grid-cols-10">
+        <div className="mt-4 grid w-full grid-cols-5 gap-1.5 sm:grid-cols-8 sm:gap-2 md:grid-cols-10 lg:grid-cols-12">
           {numbers.map((item) => {
             const selectedNow = selectedSet.has(item.number);
             const disabled = !canBuy || item.status !== "available";

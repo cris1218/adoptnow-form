@@ -37,7 +37,7 @@ export default async function VaquinhaPage({
 
   if (!token) {
     return (
-      <SiteShell title={PAGE_LABEL}>
+      <SiteShell title={PAGE_LABEL} layout="wide">
         <FormClosedNotice
           title="Link incompleto"
           message="Abra o link completo da vaquinha enviado pelo Recanto do Ron Ron."
@@ -50,7 +50,7 @@ export default async function VaquinhaPage({
 
   if (!access.ok || !access.vaquinha) {
     return (
-      <SiteShell title={PAGE_LABEL}>
+      <SiteShell title={PAGE_LABEL} layout="wide">
         <FormClosedNotice
           title="Vaquinha indisponível"
           message={
@@ -62,7 +62,7 @@ export default async function VaquinhaPage({
   }
 
   return (
-    <SiteShell eyebrow={SITE_NAME} title={PAGE_LABEL}>
+    <SiteShell eyebrow={SITE_NAME} title={PAGE_LABEL} layout="wide">
       <VaquinhaClient token={token} initialVaquinha={access.vaquinha} />
     </SiteShell>
   );

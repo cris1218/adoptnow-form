@@ -140,5 +140,5 @@ export function technicalPayerEmail(
   const digits = phone.replace(/\D/g, "") || "00000000000";
   const prefix = product === "vaquinha" ? "vaquinha" : "rifa";
   // .invalid é rejeitado pelo MP; domínio técnico do site.
-  return `${prefix}.${digits}@recantoronron.vercel.app`;
+  return `${prefix}.${digits}@recantoronron.com.br`;
 }

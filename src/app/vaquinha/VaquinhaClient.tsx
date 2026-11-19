@@ -143,7 +143,7 @@ function VaquinhaPhotoCarousel({ urls }: { urls: string[] }) {
 
   return (
     <>
-      <div className="relative aspect-[4/3] w-full overflow-hidden rounded-[1.75rem] border border-white/70 bg-stone-100 shadow-[0_18px_50px_rgba(14,90,88,0.12)] sm:aspect-[16/10]">
+      <div className="relative aspect-[4/3] w-full overflow-hidden rounded-[1.75rem] border border-white/70 bg-stone-100 shadow-[0_18px_50px_rgba(14,90,88,0.12)] sm:aspect-[16/10] lg:aspect-[2/1]">
         <button
           type="button"
           aria-label="Ampliar foto"
@@ -531,8 +531,8 @@ export function VaquinhaClient({
         <VaquinhaPhotoCarousel urls={vaquinha.photoUrls} />
       ) : null}
 
-      <div className="rounded-[1.75rem] border border-white/70 bg-white/90 p-5 shadow-[0_18px_50px_rgba(14,90,88,0.12)]">
-        <h1 className="text-2xl font-bold tracking-tight text-stone-900">
+      <div className="rounded-[1.75rem] border border-white/70 bg-white/90 p-5 shadow-[0_18px_50px_rgba(14,90,88,0.12)] lg:p-6">
+        <h1 className="text-2xl font-bold tracking-tight text-stone-900 lg:text-3xl">
           {vaquinha.title}
         </h1>
         {vaquinha.description ? (

@@ -37,7 +37,7 @@ export default async function RafflePage({
 
   if (!token) {
     return (
-      <SiteShell title={PAGE_LABEL}>
+      <SiteShell title={PAGE_LABEL} layout="wide">
         <FormClosedNotice
           title="Link incompleto"
           message="Abra o link completo da rifa enviado pelo Recanto do Ron Ron."
@@ -50,7 +50,7 @@ export default async function RafflePage({
 
   if (!access.ok || !access.raffle || !access.numbers) {
     return (
-      <SiteShell title={PAGE_LABEL}>
+      <SiteShell title={PAGE_LABEL} layout="wide">
         <FormClosedNotice
           title="Rifa indisponível"
           message={access.message || "Entre em contato com o Recanto do Ron Ron."}
@@ -60,7 +60,7 @@ export default async function RafflePage({
   }
 
   return (
-    <SiteShell eyebrow={SITE_NAME} title={PAGE_LABEL}>
+    <SiteShell eyebrow={SITE_NAME} title={PAGE_LABEL} layout="wide">
       <RaffleClient
         token={token}
         initialRaffle={access.raffle}
