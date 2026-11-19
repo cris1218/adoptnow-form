@@ -16,6 +16,7 @@ export type PublicVaquinha = {
   acceptsDonations: boolean;
   endsAt: string | null;
   publicToken: string;
+  closingDocumentUrl: string;
 };
 
 export type DonationOrder = {
@@ -75,5 +76,6 @@ export function mapPublicVaquinha(raw: Record<string, unknown>): PublicVaquinha 
     acceptsDonations: Boolean(raw.accepts_donations),
     endsAt: raw.ends_at == null ? null : String(raw.ends_at),
     publicToken: String(raw.public_token ?? ""),
+    closingDocumentUrl: String(raw.closing_document_url ?? "").trim(),
   };
 }

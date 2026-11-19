@@ -469,11 +469,64 @@ export function VaquinhaClient({
       ? pixQrImageUrl(activeOrder.pixCopyPaste)
       : null;
 
+  const isClosed =
+    vaquinha.status === "closed" || !vaquinha.acceptsDonations;
   const showDonateForm =
-    vaquinha.acceptsDonations && !showPix && !paymentConfirmed;
+    !isClosed && !showPix && !paymentConfirmed;
+  const showPixPanel = !isClosed && showPix && Boolean(activeOrder);
+
+  const closingDocumentUrl = vaquinha.closingDocumentUrl.trim();
+  const closingDocumentIsImage = /\.(jpe?g|png|webp|gif|heic)(\?|$)/i.test(
+    closingDocumentUrl
+  );
+  const catName = vaquinha.title.trim() || "gatinho";
+  const thanksMessage =
+    vaquinha.paidCount <= 0
+      ? `Obrigado a todos por ajudar o gatinho ${catName}.`
+      : vaquinha.paidCount === 1
+        ? `Obrigado ao doador por ajudar o gatinho ${catName}.`
+        : `Obrigado a todos os ${vaquinha.paidCount} doadores por ajudar o gatinho ${catName}.`;
 
   return (
     <div className="flex flex-col gap-5">
+      {isClosed ? (
+        <div className="flex flex-col gap-3">
+          <div className="rounded-[1.75rem] border border-emerald-200/80 bg-emerald-50/90 px-5 py-4 shadow-[0_18px_50px_rgba(14,90,88,0.12)]">
+            <p className="text-base font-semibold leading-relaxed text-emerald-950">
+              {thanksMessage}
+            </p>
+          </div>
+          {closingDocumentUrl ? (
+            closingDocumentIsImage ? (
+              <div className="overflow-hidden rounded-[1.75rem] border border-white/70 bg-stone-100 shadow-[0_18px_50px_rgba(14,90,88,0.12)]">
+                <a
+                  href={closingDocumentUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="block"
+                >
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={closingDocumentUrl}
+                    alt="Documento do encerramento"
+                    className="aspect-[4/3] w-full object-cover sm:aspect-[16/10]"
+                  />
+                </a>
+              </div>
+            ) : (
+              <a
+                href={closingDocumentUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex h-11 items-center justify-center rounded-2xl bg-brand-dark px-4 text-sm font-semibold text-white shadow-sm transition hover:bg-brand-950"
+              >
+                Ver documento anexado
+              </a>
+            )
+          ) : null}
+        </div>
+      ) : null}
+
       {vaquinha.photoUrls.length > 0 ? (
         <VaquinhaPhotoCarousel urls={vaquinha.photoUrls} />
       ) : null}
@@ -509,7 +562,7 @@ export function VaquinhaClient({
             {vaquinha.paidCount}{" "}
             {vaquinha.paidCount === 1 ? "doação" : "doações"}
             {endsAtLabel ? ` · até ${endsAtLabel}` : ""}
-            {!vaquinha.acceptsDonations ? " · Encerrada" : ""}
+            {isClosed ? " · Encerrada" : ""}
           </p>
         </div>
       </div>
@@ -522,7 +575,7 @@ export function VaquinhaClient({
         </div>
       ) : null}
 
-      {showPix && activeOrder ? (
+      {showPixPanel && activeOrder ? (
         <div className="rounded-[1.75rem] border border-white/70 bg-white/90 p-5 shadow-[0_18px_50px_rgba(14,90,88,0.12)]">
           <h2 className="text-lg font-semibold text-stone-900">Pague com Pix</h2>
           <p className="mt-1 text-sm text-stone-600">
@@ -694,15 +747,8 @@ export function VaquinhaClient({
         </div>
       ) : null}
 
-      {!vaquinha.acceptsDonations && !showPix ? (
-        <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3">
-          <p className="text-sm font-semibold text-amber-950">
-            Esta vaquinha não está aceitando doações no momento.
-          </p>
-        </div>
-      ) : null}
-
       {SHOW_CARD_PAYMENT &&
+      !isClosed &&
       cardModalOpen &&
       amountCents != null &&
       amountCents >= 500 ? (
