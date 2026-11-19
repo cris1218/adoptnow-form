@@ -7,6 +7,7 @@ import {
   type DocumentCheckResult,
   type DocumentPhotoVerification,
 } from "@/lib/documentCheck";
+import { consumeActionRateLimit } from "@/lib/actionRateLimit";
 import { parseIdentityAddress } from "@/lib/identityAddress";
 import { documentPhotoError } from "@/lib/questionnaire";
 import { getSupabaseForCompletion } from "@/lib/supabase";
@@ -129,6 +130,13 @@ export async function verifyDocumentPhoto(
   documentPhotoUrl: string
 ): Promise<DocumentPhotoVerification> {
   const denied: DocumentPhotoVerification = { status: "nao_verificado", proof: "" };
+  const rate = await consumeActionRateLimit({
+    bucket: "action:completion-doc-verify",
+    limit: 10,
+    windowSeconds: 600,
+  });
+  if (!rate.ok) return denied;
+
   const trimmedToken = token.trim();
   const trimmedCipher = normalizePhoneCipher(phoneCipher);
   if (!trimmedToken || !trimmedCipher) return denied;
@@ -173,6 +181,15 @@ export async function submitAdopterCompletion(
   _prev: CompletionFormState,
   formData: FormData
 ): Promise<CompletionFormState> {
+  const rate = await consumeActionRateLimit({
+    bucket: "action:completion-submit",
+    limit: 10,
+    windowSeconds: 600,
+  });
+  if (!rate.ok) {
+    return { ok: false, message: rate.message };
+  }
+
   const token = String(formData.get("token") ?? "").trim();
   const phoneCipher = normalizePhoneCipher(
     String(formData.get("phoneCipher") ?? "")

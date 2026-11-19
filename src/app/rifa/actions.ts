@@ -25,6 +25,7 @@ import {
   normalizePhone,
   phoneError,
 } from "@/lib/masks";
+import { consumeActionRateLimit } from "@/lib/actionRateLimit";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { getSupabaseServer } from "@/lib/supabase";
 
@@ -83,6 +84,15 @@ export async function lookupRaffleOrdersByPhone(
   token: string,
   phone: string
 ): Promise<{ ok: boolean; orders: BuyerOrder[]; message?: string }> {
+  const rate = await consumeActionRateLimit({
+    bucket: "action:raffle-lookup",
+    limit: 20,
+    windowSeconds: 600,
+  });
+  if (!rate.ok) {
+    return { ok: false, orders: [], message: rate.message };
+  }
+
   const normalized = normalizePhone(phone);
   if (phoneError(normalized)) {
     return { ok: true, orders: [] };
@@ -114,6 +124,15 @@ export async function purchaseRaffleNumbers(input: {
   message?: string;
   order?: BuyerOrder;
 }> {
+  const rate = await consumeActionRateLimit({
+    bucket: "action:raffle-purchase",
+    limit: 15,
+    windowSeconds: 600,
+  });
+  if (!rate.ok) {
+    return { ok: false, message: rate.message };
+  }
+
   const phone = normalizePhone(input.buyerPhone);
   const name = normalizeFullName(input.buyerName);
   const nameError = fullNameError(name);
@@ -264,6 +283,15 @@ export async function payRaffleWithCard(input: {
   message?: string;
   order?: BuyerOrder;
 }> {
+  const rate = await consumeActionRateLimit({
+    bucket: "action:raffle-card",
+    limit: 15,
+    windowSeconds: 600,
+  });
+  if (!rate.ok) {
+    return { ok: false, message: rate.message };
+  }
+
   const phone = normalizePhone(input.buyerPhone);
   const name = normalizeFullName(input.buyerName);
   const nameError = fullNameError(name);
@@ -475,6 +503,15 @@ export async function getRaffleOrderPaymentStatus(input: {
   message?: string;
   order?: BuyerOrder;
 }> {
+  const rate = await consumeActionRateLimit({
+    bucket: "action:raffle-status",
+    limit: 60,
+    windowSeconds: 600,
+  });
+  if (!rate.ok) {
+    return { ok: false, message: rate.message };
+  }
+
   try {
     const admin = adminOrThrow();
     await admin.rpc("release_expired_raffle_orders", {

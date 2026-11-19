@@ -400,6 +400,7 @@ export function AdoptionLeadForm({
         />
       ) : (
         <DocumentPhotoField
+          accessToken={token}
           required
           onBusyChange={setPhotoBusy}
           checkDocument={
@@ -608,7 +609,7 @@ export function AdoptionLeadForm({
           </label>
         </section>
       ) : (
-        <HomeVideoField />
+        <HomeVideoField accessToken={token} />
       )}
 
       <Question

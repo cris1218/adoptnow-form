@@ -1,5 +1,8 @@
 import { NextResponse } from "next/server";
 
+import { canPresignFormUpload } from "@/lib/formUploadAccess";
+import { consumeFormUploadQuota } from "@/lib/formUploadRateLimit";
+
 const MAX_DOCUMENT_BYTES = 10 * 1024 * 1024;
 const DOCUMENT_EXTENSIONS = new Set([
   "jpg",
@@ -11,6 +14,8 @@ const DOCUMENT_EXTENSIONS = new Set([
 ]);
 
 type PresignBody = {
+  accessToken?: string;
+  phoneCipher?: string;
   extension?: string;
   contentType?: string;
   size?: number;
@@ -32,6 +37,26 @@ export async function POST(request: Request) {
     body = (await request.json()) as PresignBody;
   } catch {
     return NextResponse.json({ error: "JSON inválido." }, { status: 400 });
+  }
+
+  const accessToken = body.accessToken?.trim() ?? "";
+  const allowed = await canPresignFormUpload({
+    accessToken,
+    phoneCipher: body.phoneCipher,
+  });
+  if (!allowed) {
+    return NextResponse.json(
+      { error: "Upload não autorizado." },
+      { status: 401 }
+    );
+  }
+
+  const quota = await consumeFormUploadQuota({
+    accessToken,
+    kind: "document",
+  });
+  if (!quota.ok) {
+    return NextResponse.json({ error: quota.message }, { status: 429 });
   }
 
   const extension = (body.extension ?? "jpg").replace(/^\./, "").toLowerCase();

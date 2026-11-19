@@ -431,7 +431,7 @@ export async function verifyMercadoPagoWebhookSignature(input: {
   dataId: string;
 }): Promise<boolean> {
   const secret = process.env.MERCADOPAGO_WEBHOOK_SECRET?.trim();
-  if (!secret) return true;
+  if (!secret) return false;
   if (!input.xSignature || !input.xRequestId) return false;
 
   const parts = Object.fromEntries(

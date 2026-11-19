@@ -17,6 +17,7 @@ import {
   normalizeIdentityAddress,
   type IdentityAddress,
 } from "@/lib/identityAddress";
+import { consumeActionRateLimit } from "@/lib/actionRateLimit";
 import { getSupabaseServer } from "@/lib/supabase";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { isValidCpf, normalizePhone, onlyDigits, phoneError } from "@/lib/masks";
@@ -94,6 +95,15 @@ export async function checkPotentialAdopterCpf(
   rawCpf: string,
   catId?: string
 ): Promise<{ blocked: boolean; message?: string }> {
+  const rate = await consumeActionRateLimit({
+    bucket: "action:cpf-check",
+    limit: 10,
+    windowSeconds: 600,
+  });
+  if (!rate.ok) {
+    return { blocked: true, message: rate.message };
+  }
+
   const cpf = onlyDigits(rawCpf);
   if (!isValidCpf(cpf)) {
     return { blocked: false };
@@ -135,6 +145,15 @@ export async function checkPotentialAdopterCpf(
 export async function lookupFormPersonByCpf(
   rawCpf: string
 ): Promise<LookupFormPersonByCpfResult> {
+  const rate = await consumeActionRateLimit({
+    bucket: "action:cpf-lookup",
+    limit: 10,
+    windowSeconds: 600,
+  });
+  if (!rate.ok) {
+    return { known: false };
+  }
+
   const cpf = onlyDigits(rawCpf);
   if (!isValidCpf(cpf)) {
     return { known: false };
@@ -173,6 +192,13 @@ export async function verifyLeadDocumentPhoto(
   accessKind: string,
   documentPhotoUrl: string
 ): Promise<DocumentPhotoVerification> {
+  const rate = await consumeActionRateLimit({
+    bucket: "action:doc-verify",
+    limit: 10,
+    windowSeconds: 600,
+  });
+  if (!rate.ok) return { status: "nao_verificado", proof: "" };
+
   const allowed =
     accessKind === "exclusive"
       ? (await getExclusiveCatForm(accessToken)).ok
@@ -192,6 +218,15 @@ export async function savePotentialAdopter(
       ok: true,
       message: "Recebemos seu questionário. Em breve falamos com você.",
     };
+  }
+
+  const rate = await consumeActionRateLimit({
+    bucket: "action:save-adopter",
+    limit: 10,
+    windowSeconds: 600,
+  });
+  if (!rate.ok) {
+    return { ok: false, message: rate.message };
   }
 
   const accessToken = String(formData.get("accessToken") ?? "").trim();

@@ -73,12 +73,17 @@ function readVideoDuration(file: File): Promise<number> {
   });
 }
 
-async function presignAndUpload(blob: Blob, extension: "mp4" | "webm" | "mov") {
+async function presignAndUpload(
+  blob: Blob,
+  extension: "mp4" | "webm" | "mov",
+  accessToken: string
+) {
   const contentType = blob.type || `video/${extension}`;
   const presignResponse = await fetch("/api/video-presign", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
+      accessToken,
       extension,
       contentType,
       size: blob.size,
@@ -108,7 +113,13 @@ async function presignAndUpload(blob: Blob, extension: "mp4" | "webm" | "mov") {
   return presign.publicUrl;
 }
 
-export function HomeVideoField({ disabled = false }: { disabled?: boolean }) {
+export function HomeVideoField({
+  accessToken,
+  disabled = false,
+}: {
+  accessToken: string;
+  disabled?: boolean;
+}) {
   const [mode, setMode] = useState<DeviceMode | null>(null);
   const [agreed, setAgreed] = useState(false);
   const [viaWhatsapp, setViaWhatsapp] = useState(false);
@@ -179,7 +190,11 @@ export function HomeVideoField({ disabled = false }: { disabled?: boolean }) {
     setPhase("uploading");
 
     try {
-      const publicUrl = await presignAndUpload(blob, extensionFromMime(mimeType));
+      const publicUrl = await presignAndUpload(
+        blob,
+        extensionFromMime(mimeType),
+        accessToken
+      );
       setVideoUrl(publicUrl);
       setPhase("done");
       setError("");

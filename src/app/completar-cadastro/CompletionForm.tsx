@@ -251,6 +251,8 @@ export function CompletionForm({
       <IdentityAddressFields initial={prefill ?? undefined} />
 
       <DocumentPhotoField
+        accessToken={token}
+        phoneCipher={phoneCipher}
         required
         onBusyChange={setPhotoBusy}
         checkDocument={

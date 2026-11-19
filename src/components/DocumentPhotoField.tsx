@@ -47,12 +47,18 @@ function extensionFromFile(file: File): string | null {
   return null;
 }
 
-async function presignAndUpload(file: File, extension: string): Promise<string> {
+async function presignAndUpload(
+  file: File,
+  extension: string,
+  access: { accessToken: string; phoneCipher?: string }
+): Promise<string> {
   const contentType = file.type || (extension === "pdf" ? "application/pdf" : "image/jpeg");
   const presignResponse = await fetch("/api/document-presign", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
+      accessToken: access.accessToken,
+      phoneCipher: access.phoneCipher,
       extension,
       contentType,
       size: file.size,
@@ -84,11 +90,15 @@ async function presignAndUpload(file: File, extension: string): Promise<string> 
 }
 
 export function DocumentPhotoField({
+  accessToken,
+  phoneCipher,
   disabled = false,
   required = false,
   onBusyChange,
   checkDocument,
 }: {
+  accessToken: string;
+  phoneCipher?: string;
   disabled?: boolean;
   required?: boolean;
   onBusyChange?: (busy: boolean) => void;
@@ -161,7 +171,10 @@ export function DocumentPhotoField({
     onBusyChange?.(true);
 
     try {
-      const uploaded = await presignAndUpload(file, extension);
+      const uploaded = await presignAndUpload(file, extension, {
+        accessToken,
+        phoneCipher,
+      });
       if (seq !== uploadSeq.current) return;
       setPublicUrl(uploaded);
 

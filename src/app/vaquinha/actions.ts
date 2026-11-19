@@ -11,6 +11,7 @@ import {
   normalizePhone,
   phoneError,
 } from "@/lib/masks";
+import { consumeActionRateLimit } from "@/lib/actionRateLimit";
 import { notifyStaffVaquinhaPaid } from "@/lib/notifyStaff";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { getSupabaseServer } from "@/lib/supabase";
@@ -87,6 +88,15 @@ export async function createVaquinhaDonation(input: {
   message?: string;
   order?: DonationOrder;
 }> {
+  const rate = await consumeActionRateLimit({
+    bucket: "action:vaquinha-donate",
+    limit: 15,
+    windowSeconds: 600,
+  });
+  if (!rate.ok) {
+    return { ok: false, message: rate.message };
+  }
+
   const amountCents = parseAmountToCents(input.amountText);
   if (amountCents == null || amountCents < 500) {
     return { ok: false, message: "O valor mínimo da doação é R$ 5,00." };
@@ -242,6 +252,15 @@ export async function payVaquinhaWithCard(input: {
   message?: string;
   order?: DonationOrder;
 }> {
+  const rate = await consumeActionRateLimit({
+    bucket: "action:vaquinha-card",
+    limit: 15,
+    windowSeconds: 600,
+  });
+  if (!rate.ok) {
+    return { ok: false, message: rate.message };
+  }
+
   const amountCents = parseAmountToCents(input.amountText);
   if (amountCents == null || amountCents < 500) {
     return { ok: false, message: "O valor mínimo da doação é R$ 5,00." };
@@ -459,6 +478,15 @@ export async function getVaquinhaOrderPaymentStatus(input: {
   order?: DonationOrder;
   vaquinha?: PublicVaquinha;
 }> {
+  const rate = await consumeActionRateLimit({
+    bucket: "action:vaquinha-status",
+    limit: 60,
+    windowSeconds: 600,
+  });
+  if (!rate.ok) {
+    return { ok: false, message: rate.message };
+  }
+
   try {
     const admin = adminOrThrow();
     await admin.rpc("release_expired_vaquinha_orders", {
