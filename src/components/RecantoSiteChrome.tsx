@@ -4,7 +4,11 @@ import Link from "next/link";
 import { PawMark } from "@/components/PawMark";
 import { RecantoPageTransition } from "@/components/RecantoPageTransition";
 import { RecantoSiteNav } from "@/components/RecantoSiteNav";
-import { CONTACT_WHATSAPP_LINK } from "@/lib/recantoContact";
+import {
+  CONTACT_FACEBOOK_LINK,
+  CONTACT_INSTAGRAM_LINK,
+  CONTACT_WHATSAPP_LINK,
+} from "@/lib/recantoContact";
 
 export function RecantoSiteChrome({ children }: { children: ReactNode }) {
   return (
@@ -61,9 +65,29 @@ export function RecantoSiteChrome({ children }: { children: ReactNode }) {
       </main>
 
       <footer className="relative z-10 border-t border-stone-200/70 px-4 py-6 text-center sm:px-6 lg:px-8">
-        <p className="text-xs text-stone-500 sm:text-sm">
-          Recanto do Ron Ron · Ponta Grossa / PR
-        </p>
+        <div className="mx-auto flex w-full max-w-6xl flex-col items-center gap-3">
+          <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-2">
+            <a
+              href={CONTACT_INSTAGRAM_LINK}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-sm font-semibold text-brand-dark transition hover:text-brand-950"
+            >
+              Instagram
+            </a>
+            <a
+              href={CONTACT_FACEBOOK_LINK}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-sm font-semibold text-brand-dark transition hover:text-brand-950"
+            >
+              Facebook
+            </a>
+          </div>
+          <p className="text-xs text-stone-500 sm:text-sm">
+            Recanto do Ron Ron · Ponta Grossa / PR
+          </p>
+        </div>
       </footer>
     </div>
   );

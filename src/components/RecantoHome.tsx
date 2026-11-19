@@ -8,11 +8,7 @@ import {
   type HomeRaffleCard,
   type HomeVaquinhaCard,
 } from "@/lib/home";
-import { maskPhone } from "@/lib/masks";
-import {
-  CONTACT_WHATSAPP,
-  CONTACT_WHATSAPP_LINK,
-} from "@/lib/recantoContact";
+import { CONTACT_WHATSAPP_LINK } from "@/lib/recantoContact";
 import { formatCentsBrl } from "@/lib/vaquinhas";
 
 export function RecantoHome({
@@ -50,7 +46,7 @@ export function RecantoHome({
               rel="noopener noreferrer"
               className="flex h-12 items-center justify-center rounded-2xl bg-brand-dark px-5 text-base font-semibold text-white shadow-sm transition hover:bg-brand-950"
             >
-              Falar no WhatsApp {maskPhone(CONTACT_WHATSAPP)}
+              Falar no WhatsApp
             </a>
             <Link
               href="/gatinhos"
@@ -217,7 +213,7 @@ export function RecantoHome({
             rel="noopener noreferrer"
             className="flex h-12 items-center justify-center rounded-2xl border border-brand-dark px-5 text-base font-semibold text-brand-dark transition hover:bg-brand-bg"
           >
-            WhatsApp {maskPhone(CONTACT_WHATSAPP)}
+            Falar no WhatsApp
           </a>
         </div>
       </section>
